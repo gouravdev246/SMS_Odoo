@@ -49,7 +49,7 @@ router.get("/verify-superadmin", authenticate, requireRoles("SUPERADMIN", "ADMIN
 });
 router.put("/profile", authenticate, updateProfile);
 
-// Admin / Super Admin: Create Sub-Admin with assigned module
-router.post("/create-subadmin", authenticate, requireRoles("SUPERADMIN", "ADMIN"), createSubAdmin);
+// Admin / Super Admin / Sub-Admin: Create Sub-Admin with assigned module
+router.post("/create-subadmin", authenticate, requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), createSubAdmin);
 
 export default router;

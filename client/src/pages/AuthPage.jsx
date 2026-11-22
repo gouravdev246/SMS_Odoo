@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PageBanner from '../components/common/PageBanner';
 import ScrollReveal from '../components/common/ScrollReveal';
@@ -27,7 +27,100 @@ export default function AuthPage({ initialMode = 'login' }) {
     password: '',
     confirmPassword: '',
     level: 'Intermediate',
+    otp: '',
   });
+
+  // OTP verification state
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Countdown timer for OTP resend cooldown
+  useEffect(() => {
+    let timer;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleSendOtp = async (targetEmail) => {
+    const emailToUse = (typeof targetEmail === 'string' ? targetEmail : registerForm.email || '').trim().toLowerCase();
+    if (!emailToUse || !emailToUse.includes('@')) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please enter a valid email address before requesting an OTP code.',
+      });
+      return false;
+    }
+
+    setSendingOtp(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await api.auth.sendOtp(emailToUse);
+      setSendingOtp(false);
+      setOtpSent(true);
+      setResendCooldown(60);
+      const devNotice = res.devOtp ? ` (Dev Code: ${res.devOtp})` : '';
+      setStatusMessage({
+        type: 'success',
+        text: (res.message || 'Verification OTP code sent to your email.') + devNotice,
+      });
+      return true;
+    } catch (err) {
+      setSendingOtp(false);
+      setStatusMessage({
+        type: 'error',
+        text: err.message || 'Failed to dispatch verification OTP. Please try again.',
+      });
+      return false;
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const emailToUse = (registerForm.email || '').trim().toLowerCase();
+    const otpCode = (registerForm.otp || '').trim();
+
+    if (!emailToUse || !emailToUse.includes('@')) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please provide a valid email address first.',
+      });
+      return false;
+    }
+
+    if (!otpCode || otpCode.length !== 6) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please enter the complete 6-digit OTP code sent to your email.',
+      });
+      return false;
+    }
+
+    setVerifyingOtp(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await api.auth.verifyOtp(emailToUse, otpCode);
+      setVerifyingOtp(false);
+      setOtpVerified(true);
+      setStatusMessage({
+        type: 'success',
+        text: res.message || 'OTP verified successfully! You can now complete your registration.',
+      });
+      return true;
+    } catch (err) {
+      setVerifyingOtp(false);
+      setStatusMessage({
+        type: 'error',
+        text: err.message || 'Invalid or expired OTP code. Please check and try again.',
+      });
+      return false;
+    }
+  };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -61,11 +154,9 @@ export default function AuthPage({ initialMode = 'login' }) {
 
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setStatusMessage(null);
 
     if (registerForm.password !== registerForm.confirmPassword) {
-      setLoading(false);
       setStatusMessage({
         type: 'error',
         text: 'Passwords do not match. Please verify your password.',
@@ -73,12 +164,33 @@ export default function AuthPage({ initialMode = 'login' }) {
       return;
     }
 
+    // Ensure OTP code is provided
+    if (!registerForm.otp || registerForm.otp.trim().length !== 6) {
+      if (!otpSent) {
+        setStatusMessage({
+          type: 'error',
+          text: 'Verification code required. We are dispatching an OTP to your email...',
+        });
+        await handleSendOtp();
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: 'Please enter the 6-digit OTP code sent to your email to verify your account.',
+        });
+      }
+      return;
+    }
+
+    setLoading(true);
+
     try {
       const res = await api.auth.register({
         name: registerForm.name,
-        email: registerForm.email,
+        email: registerForm.email.trim().toLowerCase(),
         phone: registerForm.phone,
         password: registerForm.password,
+        membership: registerForm.level ? registerForm.level.toUpperCase() : 'JUNIOR',
+        otp: registerForm.otp.trim(),
       });
 
       setLoading(false);
@@ -369,17 +481,128 @@ export default function AuthPage({ initialMode = 'login' }) {
                       </div>
 
                       <div>
-                        <label className="text-xs uppercase tracking-wider text-gray-300 font-bold mb-1 d-block">
-                          Email Address
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          placeholder="player@adeluxpadel.com"
-                          value={registerForm.email}
-                          onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                          className="w-100 bg-[#242424] text-white border border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:border-[#C6EF2E] focus:outline-none transition-all"
-                        />
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <label className="text-xs uppercase tracking-wider text-gray-300 font-bold mb-0">
+                            Email Address
+                          </label>
+                          {otpVerified && (
+                            <span className="badge bg-[#C6EF2E]/20 text-[#C6EF2E] border border-[#C6EF2E]/40 text-xs px-2 py-0.5 rounded-full font-bold d-inline-flex align-items-center gap-1">
+                              <i className="fa-solid fa-circle-check"></i> Email Verified
+                            </span>
+                          )}
+                        </div>
+                        <div className="d-flex gap-2">
+                          <input
+                            type="email"
+                            required
+                            disabled={otpVerified}
+                            placeholder="player@adeluxpadel.com"
+                            value={registerForm.email}
+                            onChange={(e) => {
+                              setRegisterForm({ ...registerForm, email: e.target.value });
+                              if (otpVerified) setOtpVerified(false);
+                            }}
+                            className="w-100 bg-[#242424] text-white border border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:border-[#C6EF2E] focus:outline-none transition-all disabled:opacity-80"
+                          />
+                          <button
+                            type="button"
+                            disabled={sendingOtp || resendCooldown > 0 || !registerForm.email || otpVerified}
+                            onClick={() => handleSendOtp()}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border-0 cursor-pointer d-flex align-items-center gap-1.5 ${
+                              otpVerified
+                                ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                : resendCooldown > 0
+                                ? 'bg-[#1e201e] text-gray-400 border border-gray-700 cursor-not-allowed'
+                                : 'bg-[#C6EF2E] text-black hover:bg-[#b4dc25] shadow-sm'
+                            }`}
+                          >
+                            {sendingOtp ? (
+                              <>
+                                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                <span>Sending...</span>
+                              </>
+                            ) : resendCooldown > 0 ? (
+                              <>
+                                <i className="fa-solid fa-clock"></i>
+                                <span>Resend in {resendCooldown}s</span>
+                              </>
+                            ) : otpSent ? (
+                              <>
+                                <i className="fa-solid fa-rotate-right"></i>
+                                <span>Resend OTP</span>
+                              </>
+                            ) : (
+                              <>
+                                <i className="fa-solid fa-paper-plane"></i>
+                                <span>Send OTP</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* OTP Verification Field */}
+                      <div>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <label className="text-xs uppercase tracking-wider text-gray-300 font-bold mb-0">
+                            Verification OTP Code
+                          </label>
+                          <span className="text-[11px] text-gray-400">
+                            {otpVerified ? (
+                              <span className="text-[#C6EF2E] font-medium">OTP Verified</span>
+                            ) : otpSent ? (
+                              <span className="text-amber-400">6-digit code dispatched</span>
+                            ) : (
+                              'Verification required'
+                            )}
+                          </span>
+                        </div>
+                        <div className="d-flex gap-2">
+                          <div className="position-relative flex-grow-1">
+                            <input
+                              type="text"
+                              required
+                              maxLength={6}
+                              placeholder="Enter 6-digit OTP"
+                              value={registerForm.otp}
+                              disabled={otpVerified}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                setRegisterForm({ ...registerForm, otp: val });
+                              }}
+                              className="w-100 bg-[#242424] text-white border border-gray-700 rounded-xl px-3 py-2.5 text-sm tracking-widest font-mono text-center focus:border-[#C6EF2E] focus:outline-none transition-all disabled:opacity-85 disabled:text-[#C6EF2E]"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            disabled={verifyingOtp || otpVerified || registerForm.otp.length !== 6}
+                            onClick={handleVerifyOtp}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border-0 cursor-pointer d-flex align-items-center gap-1.5 ${
+                              otpVerified
+                                ? 'bg-[#C6EF2E]/20 text-[#C6EF2E] border border-[#C6EF2E]/50 cursor-default'
+                                : registerForm.otp.length === 6
+                                ? 'bg-[#C6EF2E] text-black hover:bg-[#b4dc25] shadow-sm'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                            }`}
+                          >
+                            {verifyingOtp ? (
+                              <>
+                                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                <span>Checking...</span>
+                              </>
+                            ) : otpVerified ? (
+                              <>
+                                <i className="fa-solid fa-check"></i>
+                                <span>Verified</span>
+                              </>
+                            ) : (
+                              <>
+                                <i className="fa-solid fa-shield-halved"></i>
+                                <span>Verify OTP</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="row g-2">

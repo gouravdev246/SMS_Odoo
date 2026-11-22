@@ -120,8 +120,8 @@ export default function BarAdminPage() {
   const fetchSummary = useCallback(async (range) => {
     setLoadingSummary(true);
     try {
-      let start_date;
-      let end_date;
+      let start_date = undefined;
+      let end_date = undefined;
       const now = new Date();
       if (range === 'TODAY') {
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());

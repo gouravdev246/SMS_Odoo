@@ -9,7 +9,7 @@
     "dev": "node src/server.js",
     "build": "prisma generate",
     "seed": "node prisma/seed.js",
-    "test": "node test-super-admin.js && node test-membership-expiry.js && node test-user-roles.js && node test-court-booking-rules.js && node test-member-360.js && node test-crm-enquiries.js && node test-financials-wallet.js && node test-staff-leaves.js && node test-equipment-service-fulfillment.js && node test-membership-portal.js && node test-cafe-bar.js && node test-fastapi-cafe-integration.js && node test-login-direct.js"
+    "test": "node test-super-admin.js && node test-membership-expiry.js && node test-user-roles.js && node test-court-booking-rules.js && node test-member-360.js && node test-crm-enquiries.js && node test-financials-wallet.js && node test-staff-leaves.js && node test-equipment-service-fulfillment.js && node test-membership-portal.js && node test-cafe-bar.js && node test-fastapi-cafe-integration.js && node test-login-direct.js && node test-superadmin-features.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

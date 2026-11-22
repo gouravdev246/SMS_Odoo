@@ -93,6 +93,7 @@ export const sendRegisterOtp = async (req, res) => {
     return res.status(200).json({
       message: "Verification OTP sent to your email.",
       email: normalizedEmail,
+      ...(process.env.NODE_ENV !== "production" ? { devOtp: otp } : {}),
     });
   } catch (error) {
     console.error("Send register OTP error:", error);
@@ -187,10 +188,46 @@ export const register = async (req, res) => {
 };
 
 /**
+ * 3. Standalone OTP Verification endpoint:
+ * POST /api/auth/verify-otp
+ * Verifies if the supplied OTP matches the pending OTP for that email.
+ */
+export const verifyOtpOnly = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: "Email and OTP code are required" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const pending = pendingRegisterOtps.get(normalizedEmail) || pendingLoginOtps.get(normalizedEmail);
+
+    if (!pending || pending.otp !== otp.toString().trim() || pending.otpExpiry < new Date()) {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP code" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully!",
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({ success: false, message: "OTP verification failed", error: error.message });
+  }
+};
+
+/**
  * 3. Verify Register OTP (Alias / Fallback):
  */
 export const verifyRegisterOtp = async (req, res) => {
-  return register(req, res);
+  // If request contains full registration payload with otp, complete registration
+  if (req.body.name && req.body.password) {
+    return register(req, res);
+  }
+  // Otherwise just verify the OTP code
+  return verifyOtpOnly(req, res);
 };
 
 /**

@@ -89,6 +89,16 @@ export const api = {
       }
       return res;
     },
+    sendOtp: (email) =>
+      request('/api/auth/send-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    verifyOtp: (email, otp) =>
+      request('/api/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      }),
     logout: () => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -115,49 +125,49 @@ export const api = {
   // 2. Front Desk Walk-ins Module
   walkins: {
     register: (data) =>
-      request('/walkins/register', {
+      request('/api/walkins/register', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    getAll: (params = {}) => request(`/walkins${buildQueryString(params)}`),
-    getByPhone: (phone) => request(`/walkins/${encodeURIComponent(phone)}`),
-    getStats: () => request('/walkins/stats'),
+    getAll: (params = {}) => request(`/api/walkins${buildQueryString(params)}`),
+    getByPhone: (phone) => request(`/api/walkins/${encodeURIComponent(phone)}`),
+    getStats: () => request('/api/walkins/stats'),
   },
 
   // 3. Front Desk Call Logs Module
   callLogs: {
     create: (data) =>
-      request('/call-logs', {
+      request('/api/call-logs', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    getAll: (params = {}) => request(`/call-logs${buildQueryString(params)}`),
-    getById: (id) => request(`/call-logs/${encodeURIComponent(id)}`),
+    getAll: (params = {}) => request(`/api/call-logs${buildQueryString(params)}`),
+    getById: (id) => request(`/api/call-logs/${encodeURIComponent(id)}`),
   },
 
   // 4. Staff Shift Schedule Module
   schedules: {
     create: (data) =>
-      request('/schedules', {
+      request('/api/schedules', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    getAll: (params = {}) => request(`/schedules${buildQueryString(params)}`),
-    getById: (id) => request(`/schedules/${encodeURIComponent(id)}`),
+    getAll: (params = {}) => request(`/api/schedules${buildQueryString(params)}`),
+    getById: (id) => request(`/api/schedules/${encodeURIComponent(id)}`),
     update: (id, data) =>
-      request(`/schedules/${encodeURIComponent(id)}`, {
+      request(`/api/schedules/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
     delete: (id) =>
-      request(`/schedules/${encodeURIComponent(id)}`, {
+      request(`/api/schedules/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       }),
   },
 
   // 5. Daily Activities Module
   dailyActivities: {
-    get: (date) => request(`/daily-activities${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+    get: (date) => request(`/api/daily-activities${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   },
 
   // 6. Sports & Court Slots
@@ -380,6 +390,8 @@ export const api = {
       }),
     getModelData: (model, params = {}) =>
       request(`/api/super-admin/data/${encodeURIComponent(model)}${buildQueryString(params)}`),
+    getCourtBookings: (params = {}) =>
+      request(`/api/super-admin/data/SportsBooking${buildQueryString({ includeRelations: 'true', limit: 50, ...params })}`),
   },
 
   // 15. Membership Plans, Status, Renewal & Upgrades

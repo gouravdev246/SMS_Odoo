@@ -98,7 +98,7 @@ export default function App() {
             <Route
               path="/super-admin"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={['SUPERADMIN', 'ADMIN', 'SUBADMIN']}>
                   <SuperAdminPage />
                 </ProtectedRoute>
               }

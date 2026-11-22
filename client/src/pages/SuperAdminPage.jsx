@@ -19,6 +19,7 @@ export default function SuperAdminPage() {
 
   // Subadmin creation modal state
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [modalError, setModalError] = useState('');
   const [subAdminForm, setSubAdminForm] = useState({
     name: '',
     email: '',
@@ -33,15 +34,21 @@ export default function SuperAdminPage() {
   // Live member activity feed tab ('bookings' | 'orders' | 'purchases' | 'members')
   const [activityTab, setActivityTab] = useState('bookings');
 
-  // Fetch consolidated financials and system overview
+  // Dedicated Court Bookings Management State
+  const [courtBookings, setCourtBookings] = useState([]);
+  const [courtFilter, setCourtFilter] = useState('ALL');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
+
+  // Fetch consolidated financials, system overview, and court bookings
   const loadDashboardData = useCallback(async (currentPeriod) => {
     setLoading(true);
     setError('');
     try {
-      const [finRes, ovRes, subRes] = await Promise.all([
+      const [finRes, ovRes, subRes, bookingsRes] = await Promise.all([
         api.financials.getConsolidated(currentPeriod).catch(() => ({ report: null })),
         api.superAdmin.getOverview().catch(() => ({ counts: {}, modules: {}, recentActivity: {} })),
         api.superAdmin.getSubAdmins().catch(() => ({ subAdmins: [] })),
+        api.superAdmin.getCourtBookings().catch(() => ({ data: [] })),
       ]);
 
       const finData = finRes?.report || finRes || {};
@@ -49,6 +56,7 @@ export default function SuperAdminPage() {
       setOverview(ovRes || {});
       const staffList = Array.isArray(subRes) ? subRes : (subRes?.subAdmins || []);
       setSubAdmins(staffList);
+      setCourtBookings(bookingsRes?.data || []);
     } catch (err) {
       setError(err.message || 'Failed to load executive dashboard data.');
     } finally {
@@ -89,9 +97,17 @@ export default function SuperAdminPage() {
   const handleCreateSubAdmin = async (e) => {
     e.preventDefault();
     setCreatingSubAdmin(true);
+    setModalError('');
     setError('');
     try {
-      await api.superAdmin.createSubAdmin(subAdminForm);
+      const res = await api.superAdmin.createSubAdmin(subAdminForm);
+      const newStaff = res?.subAdmin;
+      if (newStaff) {
+        setSubAdmins((prev) => {
+          const filtered = prev.filter((s) => s.email?.toLowerCase() !== newStaff.email?.toLowerCase());
+          return [newStaff, ...filtered];
+        });
+      }
       setActionSuccess(`Sub-Admin '${subAdminForm.name}' created successfully with '${subAdminForm.module}' access!`);
       setCreateModalOpen(false);
       setSubAdminForm({
@@ -103,10 +119,12 @@ export default function SuperAdminPage() {
         module: 'front-desk',
         salary: '35000',
       });
-      loadDashboardData(period);
+      await loadDashboardData(period);
       setTimeout(() => setActionSuccess(''), 5000);
     } catch (err) {
-      setError(err.message || 'Failed to create sub-admin.');
+      const errMsg = err.message || (err.data && err.data.message) || 'Failed to create sub-admin.';
+      setModalError(errMsg);
+      setError(errMsg);
     } finally {
       setCreatingSubAdmin(false);
     }
@@ -185,6 +203,13 @@ export default function SuperAdminPage() {
   const goldPct = Math.round((goldCount / totalMembers) * 100);
   const silverPct = Math.round((silverCount / totalMembers) * 100);
   const juniorPct = Math.round((juniorCount / totalMembers) * 100);
+
+  // Filtered Court Bookings for Super Admin Oversight
+  const filteredCourtBookings = courtBookings.filter((b) => {
+    const matchesCourt = courtFilter === 'ALL' || b.whichCourt === courtFilter;
+    const matchesStatus = bookingStatusFilter === 'ALL' || b.status === bookingStatusFilter;
+    return matchesCourt && matchesStatus;
+  });
 
   return (
     <main className="bg-[#0e0f0f] text-gray-100 min-h-screen">
@@ -624,6 +649,7 @@ export default function SuperAdminPage() {
                     <tr>
                       <th className="p-3">Member Name</th>
                       <th className="p-3">Sport Court</th>
+                      <th className="p-3">Slot Time</th>
                       <th className="p-3">Players</th>
                       <th className="p-3">Amount</th>
                       <th className="p-3 text-right">Status</th>
@@ -632,7 +658,7 @@ export default function SuperAdminPage() {
                   <tbody className="divide-y divide-gray-800">
                     {recentBookings.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-gray-500">No recent court bookings recorded.</td>
+                        <td colSpan="6" className="p-4 text-center text-gray-500">No recent court bookings recorded.</td>
                       </tr>
                     ) : (
                       recentBookings.map((b) => (
@@ -648,6 +674,9 @@ export default function SuperAdminPage() {
                           </td>
                           <td className="p-3 text-gray-300">
                             <span className="font-semibold text-white">{b.whichCourt?.replace('_', ' ')}</span>
+                          </td>
+                          <td className="p-3 font-mono text-gray-400">
+                            {b.slot ? new Date(b.slot).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Scheduled'}
                           </td>
                           <td className="p-3 text-gray-400">{b.playerCount || 1} Player(s)</td>
                           <td className="p-3 font-mono font-bold text-lime-400">₹{Number(b.totalAmount || 0).toLocaleString()}</td>
@@ -812,6 +841,163 @@ export default function SuperAdminPage() {
             )}
           </div>
 
+          {/* Dedicated Court Bookings Management & Live Facility Operations Section */}
+          <div className="p-5 rounded-2xl bg-[#1A1D20] border border-gray-800 shadow-xl mb-8">
+            <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
+              <div>
+                <h4 className="text-white text-base font-bold mb-0 flex items-center gap-2">
+                  <i className="fa-solid fa-table-tennis-paddle-ball text-lime-400"></i>
+                  Court Bookings Oversight & Facility Operations
+                </h4>
+                <p className="text-xs text-gray-400 mb-0">
+                  Comprehensive audit of all court slots, member reservations, and booking revenue
+                </p>
+              </div>
+
+              {/* Total & Filter Status Badges */}
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-xl bg-lime-400/10 text-lime-400 border border-lime-400/20 text-xs font-mono font-bold">
+                  Total Bookings: {courtBookings.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => loadDashboardData(period)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition"
+                  title="Reload Bookings"
+                >
+                  <i className={`fa-solid fa-rotate-right ${loading ? 'fa-spin' : ''}`}></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Pills Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-2 bg-gray-900/60 rounded-xl border border-gray-800">
+              {/* Sport Court Filter */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-gray-400 font-semibold mr-1">Facility:</span>
+                {['ALL', 'BADMINTON', 'TENNIS', 'CRICKET', 'PADEL_COURT'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCourtFilter(c)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                      courtFilter === c
+                        ? 'bg-lime-400 text-black shadow-sm'
+                        : 'text-gray-400 hover:text-white bg-gray-800/60'
+                    }`}
+                  >
+                    {c === 'ALL' ? 'All Courts' : c.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+
+              {/* Booking Status Filter */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-gray-400 font-semibold mr-1">Status:</span>
+                {['ALL', 'CONFIRMED', 'HELD', 'CANCELLED'].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setBookingStatusFilter(s)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                      bookingStatusFilter === s
+                        ? 'bg-lime-400 text-black shadow-sm'
+                        : 'text-gray-400 hover:text-white bg-gray-800/60'
+                    }`}
+                  >
+                    {s === 'ALL' ? 'All Status' : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bookings Full Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-gray-900/80">
+                  <tr>
+                    <th className="p-3">Booking ID</th>
+                    <th className="p-3">Player / Member</th>
+                    <th className="p-3">Facility Court</th>
+                    <th className="p-3">Slot Time Window</th>
+                    <th className="p-3">Party Size</th>
+                    <th className="p-3">Rate & Discount</th>
+                    <th className="p-3">Total Charged</th>
+                    <th className="p-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {filteredCourtBookings.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="p-6 text-center text-gray-500">
+                        No court bookings matching current filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCourtBookings.map((b) => (
+                      <tr key={b.id} className="hover:bg-gray-800/30 transition">
+                        <td className="p-3 font-mono text-gray-400">
+                          #{b.id.slice(0, 8)}
+                        </td>
+                        <td className="p-3 font-bold text-white flex items-center gap-2">
+                          <span className="w-7 h-7 rounded-full bg-lime-400/10 text-lime-400 flex items-center justify-center text-xs font-bold">
+                            {b.user?.name?.[0] || 'M'}
+                          </span>
+                          <div>
+                            <div>{b.user?.name || 'Club Member'}</div>
+                            <div className="text-[10px] text-gray-400 font-mono font-normal">
+                              {b.user?.phone || b.user?.email || 'N/A'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-800 text-white border border-gray-700 flex items-center gap-1.5 w-max">
+                            <i className="fa-solid fa-table-tennis-paddle-ball text-lime-400 text-xs"></i>
+                            {b.whichCourt?.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-gray-300">
+                          <div>
+                            {b.slot ? new Date(b.slot).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          </div>
+                          <div className="text-[10px] text-lime-400">
+                            {b.slot ? new Date(b.slot).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            {b.endTime ? ` - ${new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                          </div>
+                        </td>
+                        <td className="p-3 text-gray-300">
+                          {b.playerCount || 1} Player(s)
+                        </td>
+                        <td className="p-3 font-mono text-gray-400">
+                          ₹{Number(b.basePrice || 0).toLocaleString()}
+                          {Number(b.discountPercentage || 0) > 0 && (
+                            <span className="text-yellow-400 text-[10px] ml-1">
+                              (-{Number(b.discountPercentage)}%)
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-lime-400">
+                          ₹{Number(b.totalAmount || 0).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                            b.status === 'CONFIRMED'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : b.status === 'HELD'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          }`}>
+                            {b.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Sub-Admin & Department Staff Management Table */}
           <div className="p-5 rounded-2xl bg-[#1A1D20] border border-gray-800 shadow-xl">
             <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
@@ -825,7 +1011,12 @@ export default function SuperAdminPage() {
 
               {/* Create Sub-Admin Trigger Button */}
               <button
-                onClick={() => setCreateModalOpen(true)}
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setModalError('');
+                  setCreateModalOpen(true);
+                }}
                 className="py-2 px-3.5 rounded-xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-md cursor-pointer"
               >
                 <i className="fa-solid fa-user-plus text-xs"></i>
@@ -912,6 +1103,22 @@ export default function SuperAdminPage() {
             <p className="text-xs text-gray-400 mb-4">
               Set up credentials and assign a department module for the new sub-admin.
             </p>
+
+            {modalError && (
+              <div className="p-3 mb-3.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-400 text-xs flex items-center justify-between shadow-lg">
+                <div className="flex items-center gap-2">
+                  <i className="fa-solid fa-circle-exclamation text-rose-400"></i>
+                  <span className="font-semibold">{modalError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalError('')}
+                  className="text-rose-400 hover:text-white text-base cursor-pointer px-1"
+                >
+                  &times;
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleCreateSubAdmin} className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -22,8 +22,16 @@ import { authenticate, requireRoles } from "../../../common/middlewares/auth.mid
 
 const router = Router();
 
-// All super admin routes require authentication and SUPERADMIN / ADMIN role
-router.use(authenticate, requireRoles("SUPERADMIN", "ADMIN"));
+// All super admin routes require authentication
+router.use(authenticate);
+
+// Sub-admin directory, creation, and module assignment (accessible to SUPERADMIN, ADMIN, and SUBADMIN)
+router.get("/sub-admins", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getSubAdmins);
+router.post("/sub-admins", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), createSubAdmin);
+router.put("/sub-admins/:id/module", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), updateSubAdminModule);
+
+// All core management, schema exploration, database access, and pricing strictly require SUPERADMIN or ADMIN
+router.use(requireRoles("SUPERADMIN", "ADMIN"));
 
 // Super admin status verification
 router.get("/verify", verifySuperAdminStatus);
@@ -46,11 +54,6 @@ router.delete("/data/:model/:id", deleteModelRecord);
 
 // Safe read-only SQL diagnostic query runner
 router.post("/query", executeQuery);
-
-// Sub-admin directory, creation, and module assignment
-router.get("/sub-admins", getSubAdmins);
-router.post("/sub-admins", createSubAdmin);
-router.put("/sub-admins/:id/module", updateSubAdminModule);
 
 // Sports Pricing and Configuration
 router.get("/sports/pricing", getSportsPricing);

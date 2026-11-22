@@ -8,6 +8,9 @@ export default function AdminPage() {
   const [sportsPricing, setSportsPricing] = useState([]);
   const [crmOverview, setCrmOverview] = useState(null);
   const [coverageSummary, setCoverageSummary] = useState(null);
+  const [frontDeskStats, setFrontDeskStats] = useState(null);
+  const [recentCallLogs, setRecentCallLogs] = useState([]);
+  const [dailyData, setDailyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -15,15 +18,21 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const [pricingRes, crmRes, coverageRes] = await Promise.all([
+      const [pricingRes, crmRes, coverageRes, walkinStatsRes, callsRes, dailyRes] = await Promise.all([
         api.sports.getPricing().catch(() => ({ pricing: [] })),
         api.crm.getOverview().catch(() => null),
         api.leaves.getCoverage().catch(() => null),
+        api.walkins.getStats().catch(() => null),
+        api.callLogs.getAll({ limit: 5 }).catch(() => null),
+        api.dailyActivities.get().catch(() => null),
       ]);
 
       setSportsPricing(pricingRes.pricing || []);
       setCrmOverview(crmRes);
       setCoverageSummary(coverageRes);
+      if (walkinStatsRes?.success) setFrontDeskStats(walkinStatsRes.data);
+      if (callsRes?.success) setRecentCallLogs(callsRes.data || []);
+      if (dailyRes?.success) setDailyData(dailyRes.data);
     } catch (err) {
       setError(err.message || 'Failed to load club operations data.');
     } finally {
@@ -88,8 +97,16 @@ export default function AdminPage() {
                   <i className="fa-solid fa-concierge-bell"></i>
                 </span>
               </div>
-              <div className="text-lg font-bold text-white mb-1">Reception & Walk-ins</div>
-              <p className="text-xs text-gray-400 mb-0">Member 360 recognition, visitor log, and call logs</p>
+              <div className="text-lg font-bold text-white mb-1">
+                Reception & Walk-ins
+              </div>
+              <p className="text-xs text-gray-400 mb-2">
+                Member 360 recognition, visitor log, and call logs
+              </p>
+              <div className="text-[11px] font-mono text-lime-400 font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+                <span>{frontDeskStats?.totalWalkins || 0} Registered Visitors • {dailyData?.summary?.totalActivities || 0} Activities Today</span>
+              </div>
             </Link>
 
             <Link
@@ -120,6 +137,114 @@ export default function AdminPage() {
               <p className="text-xs text-gray-400 mb-0">Cafe order bills and menu items</p>
             </Link>
           </div>
+
+          {/* Front Desk Management Real-Time Intelligence Section */}
+          <ScrollReveal animation="fade-up">
+            <div className="p-5 rounded-2xl bg-[#1A1D20] border border-gray-800 shadow-xl mb-8">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <h4 className="text-white text-base font-bold mb-0 flex items-center gap-2">
+                    <i className="fa-solid fa-concierge-bell text-lime-400"></i>
+                    Front Desk Management & Reception
+                  </h4>
+                  <p className="text-xs text-gray-400 mb-0">Live visitor flow, member recognition stats, and phone call activity logs</p>
+                </div>
+                <Link
+                  to="/front-desk"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-md"
+                >
+                  <i className="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                  <span>Open Full Operations Console</span>
+                </Link>
+              </div>
+
+              {/* Front Desk Key KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800">
+                  <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1 font-semibold">Total Walk-ins</div>
+                  <div className="text-2xl font-black font-mono text-lime-400">
+                    {frontDeskStats?.totalWalkins ?? 0}
+                  </div>
+                  <div className="text-[10px] text-gray-500">Visitor check-ins logged</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800">
+                  <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1 font-semibold">Today's Activities</div>
+                  <div className="text-2xl font-black font-mono text-emerald-400">
+                    {dailyData?.summary?.totalActivities ?? 0}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    {dailyData?.summary?.checkinsCount ?? 0} check-ins • {dailyData?.summary?.callsCount ?? 0} calls
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800">
+                  <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1 font-semibold">Visitor Memberships</div>
+                  <div className="text-2xl font-black font-mono text-yellow-400">
+                    {frontDeskStats?.byMembership?.GOLD ?? 0}G / {frontDeskStats?.byMembership?.SILVER ?? 0}S
+                  </div>
+                  <div className="text-[10px] text-gray-500">Tier converted walk-ins</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800">
+                  <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1 font-semibold">Active Phone Logs</div>
+                  <div className="text-2xl font-black font-mono text-blue-400">
+                    {recentCallLogs.length}
+                  </div>
+                  <div className="text-[10px] text-gray-500">Recent inquiries recorded</div>
+                </div>
+              </div>
+
+              {/* Recent Call Inquiries Mini-Table */}
+              <div className="border border-gray-800/80 rounded-xl overflow-hidden bg-gray-900/40">
+                <div className="p-3 bg-gray-900/80 border-b border-gray-800 flex items-center justify-between text-xs">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <i className="fa-solid fa-phone-volume text-lime-400"></i>
+                    Recent Front Desk Phone Inquiries & Logs
+                  </span>
+                  <Link to="/front-desk" className="text-lime-400 hover:underline text-[11px]">View All in Console &rarr;</Link>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-gray-300">
+                    <thead className="text-[10px] uppercase tracking-wider text-gray-400 bg-gray-900/60 border-b border-gray-800">
+                      <tr>
+                        <th className="p-2.5">Caller Name</th>
+                        <th className="p-2.5">Phone Number</th>
+                        <th className="p-2.5">Type</th>
+                        <th className="p-2.5">Inquiry Purpose</th>
+                        <th className="p-2.5 text-right">Logged Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/80">
+                      {recentCallLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="p-3 text-center text-gray-500 text-xs">No recent call logs on record.</td>
+                        </tr>
+                      ) : (
+                        recentCallLogs.slice(0, 4).map((c) => (
+                          <tr key={c.id} className="hover:bg-gray-800/20">
+                            <td className="p-2.5 font-bold text-white">{c.callerName}</td>
+                            <td className="p-2.5 font-mono text-gray-300">{c.phone}</td>
+                            <td className="p-2.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                c.callType === 'INCOMING' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-blue-500/20 text-blue-300'
+                              }`}>
+                                {c.callType}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-gray-300">{c.purpose}</td>
+                            <td className="p-2.5 text-right font-mono text-gray-400 text-[11px]">
+                              {c.callTime ? new Date(c.callTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
 
           {/* Sports Pricing & Court Capacity Table */}
           <ScrollReveal animation="fade-up">

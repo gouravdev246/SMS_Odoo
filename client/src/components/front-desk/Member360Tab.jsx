@@ -11,36 +11,8 @@ export default function Member360Tab({ showAlert }) {
   const [checkingIn, setCheckingIn] = useState(false);
   const [historySubTab, setHistorySubTab] = useState('bookings'); // 'bookings', 'shop', 'cafe', 'stringing'
 
-  // Search members by name, phone, or email
-  const handleSearch = useCallback(async (query) => {
-    setSearching(true);
-    try {
-      const res = await api.member360.search(query || '');
-      // res could be { members: [...] } or direct array
-      const list = res.members || res.data || (Array.isArray(res) ? res : []);
-      setSearchResults(list);
-    } catch (err) {
-      if (showAlert) showAlert('error', err.message || 'Failed to search members');
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, [showAlert]);
-
-  // Initial load: fetch recent members
-  useEffect(() => {
-    let isMounted = true;
-    Promise.resolve().then(async () => {
-      if (!isMounted) return;
-      handleSearch('');
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [handleSearch]);
-
   // Load detailed 360 profile for a selected member
-  const loadMember360 = async (memberId) => {
+  const loadMember360 = useCallback(async (memberId) => {
     setLoading360(true);
     setMember360Data(null);
     try {
@@ -53,7 +25,38 @@ export default function Member360Tab({ showAlert }) {
     } finally {
       setLoading360(false);
     }
-  };
+  }, [showAlert]);
+
+  // Search members by name, phone, or email
+  const handleSearch = useCallback(async (query, autoSelectFirst = false) => {
+    setSearching(true);
+    try {
+      const res = await api.member360.search(query || '');
+      // res could be { members: [...] } or direct array
+      const list = res.members || res.data || (Array.isArray(res) ? res : []);
+      setSearchResults(list);
+      if (autoSelectFirst && list.length > 0 && !selectedMember) {
+        loadMember360(list[0].id);
+      }
+    } catch (err) {
+      if (showAlert) showAlert('error', err.message || 'Failed to search members');
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, [showAlert, selectedMember, loadMember360]);
+
+  // Initial load: fetch recent members and load first member's 360 data
+  useEffect(() => {
+    let isMounted = true;
+    Promise.resolve().then(async () => {
+      if (!isMounted) return;
+      handleSearch('', true);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [handleSearch]);
 
   // 1-Click Check-In Handler
   const handleCheckIn = async (memberId) => {
@@ -543,6 +546,84 @@ export default function Member360Tab({ showAlert }) {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Fallback Member Directory Table when no specific member profile is selected */}
+      {!member360Data && !loading360 && (
+        <div className="p-6 rounded-2xl bg-[#161616] border border-gray-800 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h4 className="text-white text-base font-bold mb-0 flex items-center gap-2">
+                <i className="fa-solid fa-users text-lime-400"></i>
+                Club Members Directory ({searchResults.length})
+              </h4>
+              <p className="text-xs text-gray-400 mb-0">Select any member below to review their full cross-module 360 profile, history & entitlements.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-300">
+              <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-[#111111]">
+                <tr>
+                  <th className="p-3">Member</th>
+                  <th className="p-3">Phone</th>
+                  <th className="p-3">Email</th>
+                  <th className="p-3">Membership Tier</th>
+                  <th className="p-3">Wallet Balance</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {searchResults.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-6 text-center text-gray-500">
+                      No member records found. Try searching by phone, name, or email above.
+                    </td>
+                  </tr>
+                ) : (
+                  searchResults.map((m) => (
+                    <tr key={m.id} className="hover:bg-gray-800/30 transition">
+                      <td className="p-3 font-bold text-white flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-full bg-lime-400/10 text-lime-400 flex items-center justify-center font-bold text-xs">
+                          {m.name?.[0] || 'M'}
+                        </span>
+                        <div>
+                          <div>{m.name}</div>
+                          <div className="text-[10px] text-gray-500 font-normal">ID: {m.id.slice(0, 8)}...</div>
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono text-gray-300">{m.phone}</td>
+                      <td className="p-3 text-gray-400">{m.email}</td>
+                      <td className="p-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          m.membership === 'GOLD'
+                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                            : m.membership === 'SILVER'
+                            ? 'bg-slate-400/20 text-slate-300 border-slate-400/30'
+                            : 'bg-lime-500/20 text-lime-300 border-lime-500/30'
+                        }`}>
+                          {m.membership}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono font-bold text-lime-400">
+                        ₹{Number(m.amount || m.walletBalance || 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => loadMember360(m.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#C6EF2E] text-black hover:bg-lime-400 transition cursor-pointer"
+                        >
+                          View 360 Profile
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

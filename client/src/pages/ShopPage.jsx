@@ -95,32 +95,36 @@ export default function ShopPage() {
     } catch {
       if (isMounted) setLoadingHistory(false);
     }
-  }, [currentUser?.id]);
+  }, [currentUser]);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadWallet() {
+    async function loadData() {
       const user = api.auth.getUser();
-      if (!user) return;
-      try {
-        const walletRes = await api.wallet.getDetails();
-        if (isMounted && walletRes?.virtualCard?.balance !== undefined) {
-          const freshAmount = Number(walletRes.virtualCard.balance);
-          setCurrentUser((prev) => {
-            const updated = { ...(prev || {}), amount: freshAmount };
-            api.auth.updateUser(updated);
-            return updated;
-          });
+      if (user) {
+        try {
+          const walletRes = await api.wallet.getDetails();
+          if (isMounted && walletRes?.virtualCard?.balance !== undefined) {
+            const freshAmount = Number(walletRes.virtualCard.balance);
+            setCurrentUser((prev) => {
+              const updated = { ...(prev || {}), amount: freshAmount };
+              api.auth.updateUser(updated);
+              return updated;
+            });
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
+
+      await Promise.all([
+        fetchProducts(isMounted),
+        fetchUserHistory(isMounted),
+      ]);
     }
 
-    loadWallet();
-    fetchProducts(isMounted);
-    fetchUserHistory(isMounted);
+    loadData();
 
     return () => {
       isMounted = false;

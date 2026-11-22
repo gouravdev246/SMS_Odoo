@@ -306,3 +306,48 @@
   2. Member & Guest: Always displays the "Book Court" navigation button and right-hand CTA button for `MEMBER` accounts and unauthenticated visitors.
 - Used: React 19, `api.js` client (`api.auth.getUser()`), Tailwind CSS v4.
 - Verification: Verified in automated Chrome DevTools Protocol test across all 3 roles (`SUPERADMIN`, `MEMBER`, `ADMIN`), confirming "Book Court" is hidden for Admin/SuperAdmin and shown for Member; ESLint passed with 0 errors/warnings; production Vite build passed cleanly in 410ms; client test suites passed 100%.
+
+## 37. Virtual Card & Club Wallet Balance Synchronization in Bar and Pro Shop
+- Implemented: Resolved logical discrepancies causing Virtual Card to show zero amount on Bar and Shop pages:
+  1. Included `amount` (`User.amount`) in backend `auth.middleware.js` and `auth.controller.js` (`login`, `register`, `verifyLoginOtp`, and `getMe`), ensuring user session payloads always carry the member's current wallet balance.
+  2. Synchronized `localStorage` session keys (`user` and `champions_user`) through centralized `api.auth.updateUser` and unified `api.auth.getUser` fallback.
+  3. Added live wallet balance fetching via `api.wallet.getDetails()` in `BarMenuPage.jsx` and `ShopPage.jsx` on mount, ensuring live database wallet credits are reflected immediately upon navigation.
+  4. Implemented atomic Virtual Card checkout validation and balance deduction in `sportsShop.service.js` with `WalletTransaction` recording (`module: "SHOP"`), returning updated `walletBalance` in checkout responses.
+- Used: React 19 (`useState`, `useEffect`), Express.js, Prisma ORM (v7), PostgreSQL (`User.amount`, `WalletTransaction`).
+- Verification: ESLint passed with 0 errors/warnings (`npm --prefix client run lint`); Vite production build succeeded (`npm --prefix client run build`); all 13 backend test suites passed (100%) via `npm --prefix server test` including wallet, sports shop fulfillment, cafe, and direct login; root build passed cleanly (`npm run build`).
+
+## 38. Super Admin Real-Time Member Activity Reflection & Sub-Admin Creation
+- Implemented: Addressed real-time member activity visibility on the Super Admin dashboard and enabled sub-admin creation:
+  1. Real-Time Metrics Normalization (`SuperAdminPage.jsx`): Fixed property mapping discrepancies between backend `financials` payload and frontend state (`executiveSummary.grossRevenue`, `executiveSummary.netOperatingIncome`, `revenueStreams.courts.totalRevenue`, `revenueStreams.gearShop.totalRevenue`, `revenueStreams.barAndCafeteria.totalRevenue`, `liabilitiesAndObligations.proratedStaffPayrollForPeriod`, and circulating wallet balances) with fallbacks to `overview.modules`, ensuring court bookings, pro shop sales, and cafe/bar orders reflect live on the executive dashboard.
+  2. Live Member Activity Stream: Added an interactive 4-tab activity ledger to `SuperAdminPage.jsx` displaying real-time feeds from `overview.recentActivity`:
+     - 🎾 Courts: Member name, phone/email, court type, player count, booking amount (₹), and confirmed status.
+     - 🍽️ Bar & Cafe: Customer name, order number, line items, table/court delivery destination, total (₹), and prep status.
+     - 🛍️ Pro Shop: Customer name, gear/service items, pickup code PIN, total paid (₹), and fulfillment status.
+     - 👥 New Members: Member name, email, membership tier badge (`GOLD`, `SILVER`, `JUNIOR`), and current wallet balance.
+  3. Sub-Admin Directory Unification (`superAdmin.service.js`): Updated `getAllSubAdmins` to retrieve all administrative users from `prisma.user` (`SUBADMIN`, `STAFF`, `ADMIN`) merged with `prisma.staff`, providing complete visibility of all 28+ department leads.
+  4. Sub-Admin Creation Workflow (`POST /api/super-admin/sub-admins`): Created end-to-end endpoint and UI modal for Super Admins to create new sub-admins with name, login email, phone, password (bcrypt hashed), role (`SUBADMIN`, `STAFF`, `ADMIN`), department module (`front-desk`, `shop`, `bar`, `operations`), and monthly salary. Immediately authorizes direct login and displays in the module assignments directory.
+- Used: React 19, Express.js, Prisma ORM (v7), PostgreSQL, Tailwind CSS v4, FontAwesome 6, bcrypt.
+- Verification: Created and executed `server/test-superadmin-features.js` verifying sub-admin listing, sub-admin creation via HTTP POST, direct password login of the new sub-admin, and overview live activity feed; ESLint passed with 0 errors/warnings (`npx eslint SuperAdminPage.jsx api.js`); Vite build passed cleanly in 389ms; all 14 backend test suites passed 100% (`npm --prefix server test`).
+
+## 39. Front Desk Data Visibility, Court Booking Oversight & Sub-Admin Creation Completion
+- Implemented: Addressed all three reported frontend dashboard issues:
+  1. Front Desk Data Visibility & Operations in Admin Dashboard (`AdminPage.jsx`, `Member360Tab.jsx`, `api.js`):
+     - Added live Front Desk Reception & Operations Center section directly into `AdminPage.jsx` with real-time stats for visitor walk-ins, daily activities (check-ins + calls), membership conversion breakdown, active phone inquiries, and recent call logs table.
+     - Updated `api.js` endpoints (`walkins`, `callLogs`, `schedules`, `dailyActivities`) to use the `/api/` prefix for reliable proxy forwarding and production routing.
+     - Enhanced `Member360Tab.jsx` with automatic selection of the first recognized member upon load, and added an intuitive fallback Member Directory table showing all members, tiers, wallet balances, and 360 profile inspection buttons so data is always immediately visible.
+  2. Court Bookings Management & Live Visibility in Super Admin Dashboard (`SuperAdminPage.jsx`, `api.js`):
+     - Added a dedicated, full-width "Court Bookings Oversight & Facility Operations" section in `SuperAdminPage.jsx` with real-time total bookings counter, facility filters (All, Badminton, Tennis, Cricket, Padel Court), status filters (All, Confirmed, Held, Cancelled), and an exhaustive bookings ledger displaying Booking ID, Player details, Court facility, Slot time window, Party size, Rates & discounts, Total charged (₹), and Status badges.
+     - Enhanced the Live Activity Feed "Courts" table with formatted slot schedule times.
+  3. Super Admin Add Sub-Admins API Integration (`api.js`, `SuperAdminPage.jsx`):
+     - Added the missing `api.superAdmin.createSubAdmin(data)` client method in `api.js`, wiring the creation modal in `SuperAdminPage.jsx` to `POST /api/super-admin/sub-admins`.
+- Used: React 19, Express.js, Prisma ORM (v7), PostgreSQL, Tailwind CSS v4.
+- Verification: Client build passed with 0 errors (`npm --prefix client run build` in 343ms); backend super-admin test suite passed 100% (`node test-superadmin-features.js`); tested and verified live data retrieval for `SportsBooking` with populated user relations.
+
+## 40. Sub-Admin Creation Button & Multi-Role RBAC Authorization
+- Implemented: Resolved sub-admin creation access controls and modal feedback across frontend and backend:
+  1. Multi-Role RBAC Authorization (`superAdmin.route.js`, `auth.route.js`): Allowed `requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN")` for sub-admin listing (`GET /api/super-admin/sub-admins`), creation (`POST /api/super-admin/sub-admins`), department module assignment (`PUT /api/super-admin/sub-admins/:id/module`), and auth registration (`POST /api/auth/create-subadmin`), preventing 403 Forbidden errors when an administrative sub-admin creates other sub-admins.
+  2. Frontend Route Protection Guard (`App.jsx`): Updated `/super-admin` route protection to allow `['SUPERADMIN', 'ADMIN', 'SUBADMIN']`, ensuring sub-admins are not bounced or redirected away.
+  3. Interactive Modal Error Feedback (`SuperAdminPage.jsx`): Added `modalError` state and rendered inline error alert banner directly inside the modal dialog over the form, so any validation or server error is immediately visible above the modal overlay; updated trigger button to clear previous errors on open; and updated state to optimistically prepend the newly created sub-admin upon success before reloading dashboard data.
+  4. Code Quality & Linter Compliance (`Member360Tab.jsx`): Resolved variable-before-declaration and `useCallback` dependency array ordering for `loadMember360`.
+- Used: React 19, Express.js RBAC middleware (`requireRoles`, `authenticate`), Prisma ORM (v7), PostgreSQL, Tailwind CSS v4.
+- Verification: Server integration test `test-super-admin.js` passed 100% (9/9 passed); verified live sub-admin creation via HTTP POST using a `SUBADMIN` role JWT returning 201 Created; ESLint passed with 0 errors and 0 warnings (`npm --prefix client run lint`); client and root build passed cleanly (`npm run build`).
