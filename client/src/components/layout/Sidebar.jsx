@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { api } from '../../services/api';
 
 export default function Sidebar({ isOpen, onClose }) {
   const [morePagesOpen, setMorePagesOpen] = useState(false);
+  const currentUser = api.auth.getUser();
+  const isAdminOrSuperAdmin = currentUser && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN');
 
   return (
     <aside>
@@ -37,11 +40,13 @@ export default function Sidebar({ isOpen, onClose }) {
                 Home
               </Link>
             </li>
-            <li>
-              <Link to="/booking" onClick={onClose}>
-                Book Court
-              </Link>
-            </li>
+            {!isAdminOrSuperAdmin && (
+              <li>
+                <Link to="/booking" onClick={onClose}>
+                  Book Court
+                </Link>
+              </li>
+            )}
             <li>
               <Link to="/shop" onClick={onClose}>
                 <i className="fa-solid fa-store mr-2 text-[#C6EF2E]"></i>
@@ -64,6 +69,22 @@ export default function Sidebar({ isOpen, onClose }) {
                 Contact Us
               </Link>
             </li>
+            {currentUser && currentUser.role === 'SUPERADMIN' && (
+              <li>
+                <Link to="/super-admin" onClick={onClose} className="text-[#C6EF2E] font-bold">
+                  <i className="fa-solid fa-chart-pie mr-2 text-[#C6EF2E]"></i>
+                  Super Admin Portal
+                </Link>
+              </li>
+            )}
+            {currentUser && currentUser.role === 'ADMIN' && (
+              <li>
+                <Link to="/admin" onClick={onClose} className="text-[#C6EF2E] font-bold">
+                  <i className="fa-solid fa-gauge-high mr-2 text-[#C6EF2E]"></i>
+                  Admin Console
+                </Link>
+              </li>
+            )}
             <li>
               <Link to="/front-desk" onClick={onClose}>
                 Front Desk Operations
@@ -144,16 +165,18 @@ export default function Sidebar({ isOpen, onClose }) {
           </ul>
 
           <div className="p-3 mt-4 d-flex flex-column gap-2">
-            <Link
-              to="/booking"
-              onClick={onClose}
-              className="btn btn-accent w-100 justify-content-center text-center"
-            >
-              <span className="btn-title">Book a Court</span>
-              <span className="icon-circle">
-                <i className="fa-solid fa-arrow-right"></i>
-              </span>
-            </Link>
+            {!isAdminOrSuperAdmin && (
+              <Link
+                to="/booking"
+                onClick={onClose}
+                className="btn btn-accent w-100 justify-content-center text-center"
+              >
+                <span className="btn-title">Book a Court</span>
+                <span className="icon-circle">
+                  <i className="fa-solid fa-arrow-right"></i>
+                </span>
+              </Link>
+            )}
             <Link
               to="/login"
               onClick={onClose}

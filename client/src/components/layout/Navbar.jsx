@@ -8,6 +8,7 @@ export default function Navbar({ onOpenSidebar }) {
   const currentUser = api.auth.getUser();
   const roleBadge = getRoleBadge(currentUser);
   const dashboardRoute = getDashboardRoute(currentUser);
+  const isAdminOrSuperAdmin = currentUser && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN');
 
   const isActive = (path) => location.pathname === path;
 
@@ -43,12 +44,17 @@ export default function Navbar({ onOpenSidebar }) {
                   >
                     Home
                   </Link>
-                  <Link
-                    to="/booking"
-                    className={`nav-link-btn ${isActive('/booking') ? 'active' : ''}`}
-                  >
-                    Book Court
-                  </Link>
+
+                  {/* Hide Book Court for Admin / Super Admin, show for Member / Guest */}
+                  {!isAdminOrSuperAdmin && (
+                    <Link
+                      to="/booking"
+                      className={`nav-link-btn ${isActive('/booking') ? 'active' : ''}`}
+                    >
+                      Book Court
+                    </Link>
+                  )}
+
                   <Link
                     to="/shop"
                     className={`nav-link-btn ${isActive('/shop') ? 'active' : ''}`}
@@ -171,23 +177,26 @@ export default function Navbar({ onOpenSidebar }) {
                         <span>Logout</span>
                       </button>
 
-                      <Link to="/booking" className="btn btn-accent">
-                        <span className="btn-title">Book Court</span>
-                        <span className="icon-circle">
-                          <i className="fa-solid fa-arrow-right"></i>
-                        </span>
-                      </Link>
+                      {/* Hide Book Court for Admin / Super Admin, show for Member */}
+                      {!isAdminOrSuperAdmin && (
+                        <Link to="/booking" className="btn btn-accent">
+                          <span className="btn-title">Book Court</span>
+                          <span className="icon-circle">
+                            <i className="fa-solid fa-arrow-right"></i>
+                          </span>
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     <>
-                      <Link
+                      {/* <Link
                         to="/login"
                         className="btn-auth-nav"
                         title="Sign In or Register"
                       >
                         <i className="fa-regular fa-user mr-1.5"></i>
                         <span>Login</span>
-                      </Link>
+                      </Link> */}
                       <Link to="/membership" className="btn btn-accent">
                         <span className="btn-title">Join The Club</span>
                         <span className="icon-circle">

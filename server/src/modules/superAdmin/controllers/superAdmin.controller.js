@@ -171,6 +171,34 @@ export const getSubAdmins = async (req, res) => {
 };
 
 /**
+ * POST /api/super-admin/sub-admins
+ * Creates a new sub-admin with authentication credentials and module assignment.
+ */
+export const createSubAdmin = async (req, res) => {
+  try {
+    const { name, email, phone, password, role, module, salary } = req.body;
+    const subAdmin = await superAdminService.createSubAdmin({
+      name,
+      email,
+      phone,
+      password,
+      role,
+      module,
+      salary,
+    });
+    return res.status(201).json({
+      message: `Sub-admin '${subAdmin.name}' created successfully with module '${subAdmin.designation}'`,
+      subAdmin,
+    });
+  } catch (error) {
+    console.error("Super Admin createSubAdmin error:", error);
+    return res.status(error.statusCode || 400).json({
+      message: error.message || "Failed to create sub-admin",
+    });
+  }
+};
+
+/**
  * PUT /api/super-admin/sub-admins/:id/module
  * Reassigns or assigns a module to a sub-admin.
  */

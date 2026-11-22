@@ -120,11 +120,12 @@ export const checkout = async (req, res) => {
       success: true,
       message: "Order placed successfully",
       data: order,
+      walletBalance: order.walletBalance,
     });
   } catch (error) {
     console.error("Error processing checkout:", error);
 
-    return res.status(400).json({
+    return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message || "Failed to process checkout",
     });

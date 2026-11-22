@@ -17,6 +17,22 @@ export default function SuperAdminPage() {
   const [newModule, setNewModule] = useState('front-desk');
   const [updatingModule, setUpdatingModule] = useState(false);
 
+  // Subadmin creation modal state
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [subAdminForm, setSubAdminForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    role: 'SUBADMIN',
+    module: 'front-desk',
+    salary: '35000',
+  });
+  const [creatingSubAdmin, setCreatingSubAdmin] = useState(false);
+
+  // Live member activity feed tab ('bookings' | 'orders' | 'purchases' | 'members')
+  const [activityTab, setActivityTab] = useState('bookings');
+
   // Fetch consolidated financials and system overview
   const loadDashboardData = useCallback(async (currentPeriod) => {
     setLoading(true);
@@ -24,13 +40,15 @@ export default function SuperAdminPage() {
     try {
       const [finRes, ovRes, subRes] = await Promise.all([
         api.financials.getConsolidated(currentPeriod).catch(() => ({ report: null })),
-        api.superAdmin.getOverview().catch(() => ({ counts: {}, modules: {} })),
-        api.superAdmin.getSubAdmins().catch(() => []),
+        api.superAdmin.getOverview().catch(() => ({ counts: {}, modules: {}, recentActivity: {} })),
+        api.superAdmin.getSubAdmins().catch(() => ({ subAdmins: [] })),
       ]);
 
-      setFinancials(finRes.report || finRes);
-      setOverview(ovRes);
-      setSubAdmins(subRes || []);
+      const finData = finRes?.report || finRes || {};
+      setFinancials(finData);
+      setOverview(ovRes || {});
+      const staffList = Array.isArray(subRes) ? subRes : (subRes?.subAdmins || []);
+      setSubAdmins(staffList);
     } catch (err) {
       setError(err.message || 'Failed to load executive dashboard data.');
     } finally {
@@ -55,7 +73,7 @@ export default function SuperAdminPage() {
     if (!selectedStaff) return;
     setUpdatingModule(true);
     try {
-      await api.superAdmin.updateSubAdminModule(selectedStaff.id, newModule);
+      await api.superAdmin.updateSubAdminModule(selectedStaff.id || selectedStaff.userId, newModule);
       setActionSuccess(`Staff member ${selectedStaff.name} reassigned to '${newModule}' module successfully.`);
       setSelectedStaff(null);
       loadDashboardData(period);
@@ -67,20 +85,95 @@ export default function SuperAdminPage() {
     }
   };
 
-  // Safe metrics extraction
-  const grossRevenue = financials?.summary?.grossRevenue || 0;
-  const netEarnings = financials?.summary?.netEarnings || 0;
-  const totalPayroll = financials?.liabilities?.totalPayrollLiability || 0;
-  const walletLiabilities = financials?.liabilities?.circulatingWalletBalances || 0;
+  // Handle new sub-admin creation
+  const handleCreateSubAdmin = async (e) => {
+    e.preventDefault();
+    setCreatingSubAdmin(true);
+    setError('');
+    try {
+      await api.superAdmin.createSubAdmin(subAdminForm);
+      setActionSuccess(`Sub-Admin '${subAdminForm.name}' created successfully with '${subAdminForm.module}' access!`);
+      setCreateModalOpen(false);
+      setSubAdminForm({
+        name: '',
+        email: '',
+        phone: '',
+        password: '',
+        role: 'SUBADMIN',
+        module: 'front-desk',
+        salary: '35000',
+      });
+      loadDashboardData(period);
+      setTimeout(() => setActionSuccess(''), 5000);
+    } catch (err) {
+      setError(err.message || 'Failed to create sub-admin.');
+    } finally {
+      setCreatingSubAdmin(false);
+    }
+  };
 
-  const courtsRev = financials?.streams?.courts?.revenue || 0;
-  const shopRev = financials?.streams?.gearShop?.totalRevenue || 0;
-  const cafeRev = financials?.streams?.cafeAndBar?.revenue || 0;
+  // Dual-compatible metrics extraction (supports both executiveSummary and legacy summary structures, fallback to overview modules)
+  const courtsRev =
+    financials?.revenueStreams?.courts?.totalRevenue ??
+    financials?.streams?.courts?.revenue ??
+    Number(overview?.modules?.sports?.totalBookingRevenue || 0);
+
+  const shopRev =
+    financials?.revenueStreams?.gearShop?.totalRevenue ??
+    financials?.streams?.gearShop?.totalRevenue ??
+    Number(overview?.modules?.shop?.totalRevenue || 0);
+
+  const cafeRev =
+    financials?.revenueStreams?.barAndCafeteria?.totalRevenue ??
+    financials?.streams?.cafeAndBar?.revenue ??
+    Number(overview?.modules?.cafe?.totalRevenue || 0);
+
+  const grossRevenue =
+    financials?.executiveSummary?.grossRevenue ??
+    financials?.summary?.grossRevenue ??
+    (courtsRev + shopRev + cafeRev);
+
+  const netEarnings =
+    financials?.executiveSummary?.netOperatingIncome ??
+    financials?.summary?.netEarnings ??
+    grossRevenue;
+
+  const totalPayroll =
+    financials?.liabilitiesAndObligations?.proratedStaffPayrollForPeriod ??
+    financials?.liabilities?.totalPayrollLiability ??
+    0;
+
+  const walletLiabilities =
+    financials?.liabilitiesAndObligations?.circulatingMemberBalancesOwed ??
+    financials?.executiveSummary?.circulatingMemberBalances ??
+    financials?.liabilities?.circulatingWalletBalances ??
+    Number(overview?.modules?.users?.totalBalance || 0);
+
+  const courtsBookingsCount =
+    financials?.revenueStreams?.courts?.bookingsCount ??
+    financials?.streams?.courts?.bookingsCount ??
+    (overview?.modules?.sports?.totalBookings || 0);
+
+  const shopPurchasesCount =
+    financials?.revenueStreams?.gearShop?.purchasesCount ??
+    financials?.streams?.gearShop?.purchasesCount ??
+    (overview?.modules?.shop?.totalPurchases || 0);
+
+  const cafeOrdersCount =
+    financials?.revenueStreams?.barAndCafeteria?.ordersCount ??
+    financials?.streams?.cafeAndBar?.ordersCount ??
+    (overview?.modules?.cafe?.totalOrders || 0);
 
   const maxStreamRev = Math.max(courtsRev, shopRev, cafeRev, 1);
   const courtsBarPct = Math.round((courtsRev / maxStreamRev) * 100);
   const shopBarPct = Math.round((shopRev / maxStreamRev) * 100);
   const cafeBarPct = Math.round((cafeRev / maxStreamRev) * 100);
+
+  // Recent member activities from overview
+  const recentBookings = overview?.recentActivity?.recentBookings || [];
+  const recentOrders = overview?.recentActivity?.recentOrders || [];
+  const recentPurchases = overview?.recentActivity?.recentPurchases || [];
+  const recentUsers = overview?.recentActivity?.recentUsers || [];
 
   // Membership counts
   const usersMod = overview?.modules?.users || {};
@@ -305,15 +398,15 @@ export default function SuperAdminPage() {
               <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-800/80 text-center text-xs">
                 <div>
                   <div className="text-gray-400 text-[10px]">Courts Bookings</div>
-                  <div className="font-bold text-white font-mono">{financials?.streams?.courts?.bookingsCount || 0}</div>
+                  <div className="font-bold text-white font-mono">{courtsBookingsCount}</div>
                 </div>
                 <div>
                   <div className="text-gray-400 text-[10px]">Shop Purchases</div>
-                  <div className="font-bold text-white font-mono">{financials?.streams?.gearShop?.purchasesCount || 0}</div>
+                  <div className="font-bold text-white font-mono">{shopPurchasesCount}</div>
                 </div>
                 <div>
                   <div className="text-gray-400 text-[10px]">Cafe Bills</div>
-                  <div className="font-bold text-white font-mono">{financials?.streams?.cafeAndBar?.ordersCount || 0}</div>
+                  <div className="font-bold text-white font-mono">{cafeOrdersCount}</div>
                 </div>
               </div>
             </div>
@@ -462,6 +555,263 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
+          {/* Live Member Activity Feed Across Club Modules */}
+          <div className="p-5 rounded-2xl bg-[#1A1D20] border border-gray-800 shadow-xl mb-8">
+            <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
+              <div>
+                <h4 className="text-white text-base font-bold mb-0 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <i className="fa-solid fa-bolt text-lime-400"></i>
+                  Live Member Activity Stream
+                </h4>
+                <p className="text-xs text-gray-400 mb-0">Real-time actions, court bookings, food orders, and gear purchases across all club modules</p>
+              </div>
+
+              {/* Activity Filter Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-gray-900/80 rounded-xl border border-gray-800">
+                <button
+                  onClick={() => setActivityTab('bookings')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activityTab === 'bookings'
+                      ? 'bg-lime-400 text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <i className="fa-solid fa-table-tennis-paddle-ball text-xs"></i>
+                  <span>Courts ({recentBookings.length})</span>
+                </button>
+                <button
+                  onClick={() => setActivityTab('orders')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activityTab === 'orders'
+                      ? 'bg-amber-400 text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <i className="fa-solid fa-utensils text-xs"></i>
+                  <span>Bar & Cafe ({recentOrders.length})</span>
+                </button>
+                <button
+                  onClick={() => setActivityTab('purchases')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activityTab === 'purchases'
+                      ? 'bg-emerald-400 text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <i className="fa-solid fa-store text-xs"></i>
+                  <span>Pro Shop ({recentPurchases.length})</span>
+                </button>
+                <button
+                  onClick={() => setActivityTab('members')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activityTab === 'members'
+                      ? 'bg-blue-400 text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <i className="fa-solid fa-users text-xs"></i>
+                  <span>New Members ({recentUsers.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Activity Table: Court Bookings */}
+            {activityTab === 'bookings' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-gray-300">
+                  <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-gray-900/40">
+                    <tr>
+                      <th className="p-3">Member Name</th>
+                      <th className="p-3">Sport Court</th>
+                      <th className="p-3">Players</th>
+                      <th className="p-3">Amount</th>
+                      <th className="p-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {recentBookings.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="p-4 text-center text-gray-500">No recent court bookings recorded.</td>
+                      </tr>
+                    ) : (
+                      recentBookings.map((b) => (
+                        <tr key={b.id} className="hover:bg-gray-800/30 transition">
+                          <td className="p-3 font-bold text-white flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-lime-400/10 text-lime-400 flex items-center justify-center text-xs">
+                              {b.user?.name?.[0] || 'M'}
+                            </span>
+                            <div>
+                              <div>{b.user?.name || 'Member'}</div>
+                              <div className="text-[10px] text-gray-400 font-normal">{b.user?.phone || b.user?.email}</div>
+                            </div>
+                          </td>
+                          <td className="p-3 text-gray-300">
+                            <span className="font-semibold text-white">{b.whichCourt?.replace('_', ' ')}</span>
+                          </td>
+                          <td className="p-3 text-gray-400">{b.playerCount || 1} Player(s)</td>
+                          <td className="p-3 font-mono font-bold text-lime-400">₹{Number(b.totalAmount || 0).toLocaleString()}</td>
+                          <td className="p-3 text-right">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              {b.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Activity Table: Food & Bar Orders */}
+            {activityTab === 'orders' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-gray-300">
+                  <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-gray-900/40">
+                    <tr>
+                      <th className="p-3">Member Name</th>
+                      <th className="p-3">Order Items</th>
+                      <th className="p-3">Delivery Destination</th>
+                      <th className="p-3">Total Amount</th>
+                      <th className="p-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {recentOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="p-4 text-center text-gray-500">No recent cafe or bar orders recorded.</td>
+                      </tr>
+                    ) : (
+                      recentOrders.map((o) => (
+                        <tr key={o.id} className="hover:bg-gray-800/30 transition">
+                          <td className="p-3 font-bold text-white flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-amber-400/10 text-amber-400 flex items-center justify-center text-xs">
+                              {o.user?.name?.[0] || 'C'}
+                            </span>
+                            <div>
+                              <div>{o.user?.name || 'Customer'}</div>
+                              <div className="text-[10px] text-gray-400 font-normal">{o.orderNumber}</div>
+                            </div>
+                          </td>
+                          <td className="p-3 text-gray-300">
+                            {Array.isArray(o.orderItems) ? o.orderItems.join(', ') : o.orderItems || 'Kitchen Items'}
+                          </td>
+                          <td className="p-3 text-gray-400">
+                            {o.deliveryLocation === 'COURT' ? `Court #${o.courtNumber}` : o.deliveryLocation === 'TABLE' ? `Table #${o.tableNumber}` : 'Takeaway'}
+                          </td>
+                          <td className="p-3 font-mono font-bold text-amber-400">₹{Number(o.totalAmount || 0).toLocaleString()}</td>
+                          <td className="p-3 text-right">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {o.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Activity Table: Pro Shop Purchases */}
+            {activityTab === 'purchases' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-gray-300">
+                  <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-gray-900/40">
+                    <tr>
+                      <th className="p-3">Member Name</th>
+                      <th className="p-3">Gear & Services</th>
+                      <th className="p-3">Fulfillment</th>
+                      <th className="p-3">Total Paid</th>
+                      <th className="p-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {recentPurchases.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="p-4 text-center text-gray-500">No recent pro shop purchases recorded.</td>
+                      </tr>
+                    ) : (
+                      recentPurchases.map((p) => (
+                        <tr key={p.id} className="hover:bg-gray-800/30 transition">
+                          <td className="p-3 font-bold text-white flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-emerald-400/10 text-emerald-400 flex items-center justify-center text-xs">
+                              {p.user?.name?.[0] || 'S'}
+                            </span>
+                            <div>
+                              <div>{p.user?.name || p.name || 'Member'}</div>
+                              <div className="text-[10px] text-gray-400 font-normal">{p.phone || p.user?.email}</div>
+                            </div>
+                          </td>
+                          <td className="p-3 text-gray-300">
+                            {Array.isArray(p.items) ? p.items.join(', ') : 'Sports Equipment'}
+                          </td>
+                          <td className="p-3 text-gray-400">
+                            {p.pickupCode ? `Pickup PIN: ${p.pickupCode}` : p.fulfillmentType || 'Counter'}
+                          </td>
+                          <td className="p-3 font-mono font-bold text-emerald-400">₹{Number(p.totalAmount || 0).toLocaleString()}</td>
+                          <td className="p-3 text-right">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              {p.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Activity Table: New Members */}
+            {activityTab === 'members' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-gray-300">
+                  <thead className="text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-800 bg-gray-900/40">
+                    <tr>
+                      <th className="p-3">Member Name</th>
+                      <th className="p-3">Email Address</th>
+                      <th className="p-3">Tier</th>
+                      <th className="p-3 text-right">Wallet Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {recentUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-gray-500">No recent member registrations recorded.</td>
+                      </tr>
+                    ) : (
+                      recentUsers.map((u) => (
+                        <tr key={u.id} className="hover:bg-gray-800/30 transition">
+                          <td className="p-3 font-bold text-white flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-blue-400/10 text-blue-400 flex items-center justify-center text-xs">
+                              {u.name?.[0] || 'U'}
+                            </span>
+                            {u.name}
+                          </td>
+                          <td className="p-3 text-gray-400">{u.email}</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              u.membership === 'GOLD' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' :
+                              u.membership === 'SILVER' ? 'bg-slate-400/20 text-slate-300 border-slate-400/30' :
+                              'bg-lime-400/20 text-lime-300 border-lime-400/30'
+                            }`}>
+                              {u.membership}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-lime-400">
+                            ₹{Number(u.amount || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Sub-Admin & Department Staff Management Table */}
           <div className="p-5 rounded-2xl bg-[#1A1D20] border border-gray-800 shadow-xl">
             <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
@@ -472,6 +822,15 @@ export default function SuperAdminPage() {
                 </h4>
                 <p className="text-xs text-gray-400 mb-0">Control department managers (Bar, Shop, Front Desk, Ops)</p>
               </div>
+
+              {/* Create Sub-Admin Trigger Button */}
+              <button
+                onClick={() => setCreateModalOpen(true)}
+                className="py-2 px-3.5 rounded-xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <i className="fa-solid fa-user-plus text-xs"></i>
+                <span>Create Sub-Admin</span>
+              </button>
             </div>
 
             <div className="overflow-x-auto">
@@ -533,6 +892,146 @@ export default function SuperAdminPage() {
           </div>
         </div>
       </div>
+
+      {/* Create Sub-Admin Modal */}
+      {createModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#1A1D20] border border-gray-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-white text-base font-bold flex items-center gap-2">
+                <i className="fa-solid fa-user-plus text-lime-400"></i>
+                Create New Sub-Admin
+              </h4>
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="text-gray-400 hover:text-white text-base"
+              >
+                &times;
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Set up credentials and assign a department module for the new sub-admin.
+            </p>
+
+            <form onSubmit={handleCreateSubAdmin} className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={subAdminForm.name}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, name: e.target.value })}
+                    placeholder="e.g. Rahul Sharma"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:border-lime-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Email Address (Login)</label>
+                  <input
+                    type="email"
+                    required
+                    value={subAdminForm.email}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, email: e.target.value })}
+                    placeholder="e.g. rahul@smsclub.com"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:border-lime-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Phone Number (10 digits)</label>
+                  <input
+                    type="text"
+                    required
+                    value={subAdminForm.phone}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, phone: e.target.value })}
+                    placeholder="e.g. 9810000999"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:border-lime-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Login Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={subAdminForm.password}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, password: e.target.value })}
+                    placeholder="Temporary password"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:border-lime-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">System Role</label>
+                  <select
+                    value={subAdminForm.role}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, role: e.target.value })}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white focus:border-lime-400 focus:outline-none"
+                  >
+                    <option value="SUBADMIN">Sub-Admin (Manager)</option>
+                    <option value="STAFF">Staff Member</option>
+                    <option value="ADMIN">Administrator</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Assigned Department</label>
+                  <select
+                    value={subAdminForm.module}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, module: e.target.value })}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white focus:border-lime-400 focus:outline-none"
+                  >
+                    <option value="front-desk">Front Desk & Reception</option>
+                    <option value="shop">Pro Shop & Gear</option>
+                    <option value="bar">Bar, Lounge & Cafe</option>
+                    <option value="operations">General Operations</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Monthly Salary (₹)</label>
+                  <input
+                    type="number"
+                    value={subAdminForm.salary}
+                    onChange={(e) => setSubAdminForm({ ...subAdminForm, salary: e.target.value })}
+                    placeholder="35000"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:border-lime-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-3 border-t border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setCreateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs text-gray-400 hover:text-white border border-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingSubAdmin}
+                  className="py-2 px-5 rounded-xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-xs transition cursor-pointer shadow-md flex items-center gap-1.5"
+                >
+                  {creatingSubAdmin ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin text-xs"></i>
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-check text-xs"></i>
+                      <span>Create Sub-Admin</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Module Reassignment Modal */}
       {selectedStaff && (

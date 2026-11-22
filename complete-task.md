@@ -299,3 +299,10 @@
 - Implemented: Removed OTP challenge from `POST /api/auth/login`. Login now validates email and password against bcrypt hash, generates a 7-day signed JWT token, sets the `httpOnly` authentication cookie, and immediately returns the authenticated user payload (`token`, `user: { id, name, email, phone, role, membership, module }`). Also sanitized email normalization to cleanly reject non-existent accounts with 400 without crashing.
 - Used: Node.js, Express, `bcrypt`, `jsonwebtoken`, Prisma ORM (v7).
 - Verification: Created and executed `test-login-direct.js` verifying missing credentials rejection (400), invalid password rejection (400), non-existent email rejection (400), direct password login success returning JWT token & user object (200), and authenticated access to protected `/api/auth/me` with the issued token; `npm run build` completed cleanly.
+
+## 36. Role-Based Navbar 'Book Court' Visibility Logic (Admin & Super Admin vs Member)
+- Implemented: Added explicit role-conditional logic in `Navbar.jsx` (and mobile `Sidebar.jsx`) for the "Book Court" action:
+  1. Admin & Super Admin: Automatically hides the "Book Court" navigation button and right-hand CTA button when logged in as `ADMIN` or `SUPERADMIN`, freeing up critical navbar space so all administrative and standard links (Home, Pro Shop, Court Bar, About Us, Contact Us, Super Admin/Admin Portal, Wallet) remain completely visible.
+  2. Member & Guest: Always displays the "Book Court" navigation button and right-hand CTA button for `MEMBER` accounts and unauthenticated visitors.
+- Used: React 19, `api.js` client (`api.auth.getUser()`), Tailwind CSS v4.
+- Verification: Verified in automated Chrome DevTools Protocol test across all 3 roles (`SUPERADMIN`, `MEMBER`, `ADMIN`), confirming "Book Court" is hidden for Admin/SuperAdmin and shown for Member; ESLint passed with 0 errors/warnings; production Vite build passed cleanly in 410ms; client test suites passed 100%.

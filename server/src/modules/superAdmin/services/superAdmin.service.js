@@ -657,39 +657,250 @@ export const executeSafeQuery = async (sqlQuery) => {
 
 /**
  * SUB-ADMIN & STAFF ACCESS MANAGEMENT:
- * Fetches all staff members and their assigned modules.
+ * Fetches all administrative staff and sub-admins from both Staff and User tables.
  */
 export const getAllSubAdmins = async () => {
-  const staff = await prisma.staff.findMany({
+  // 1. Fetch records from Staff table
+  const staffRecords = await prisma.staff.findMany({
     orderBy: { createdAt: "desc" },
   });
-  return staff;
+
+  // 2. Fetch all users with administrative / staff roles from User table
+  const administrativeUsers = await prisma.user.findMany({
+    where: {
+      role: { in: ["SUBADMIN", "STAFF", "ADMIN"] },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+    },
+    orderBy: { name: "asc" },
+  });
+
+  // Map staff by lower-cased email
+  const staffByEmail = new Map();
+  for (const s of staffRecords) {
+    if (s.email) {
+      staffByEmail.set(s.email.toLowerCase(), s);
+    }
+  }
+
+  const combined = [];
+  const processedEmails = new Set();
+
+  for (const u of administrativeUsers) {
+    const emailKey = u.email ? u.email.toLowerCase() : "";
+    processedEmails.add(emailKey);
+    const matchingStaff = staffByEmail.get(emailKey);
+
+    combined.push({
+      id: matchingStaff?.id || u.id,
+      userId: u.id,
+      staffId: matchingStaff?.id || null,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      role: u.role,
+      designation: matchingStaff?.designation || (u.role === "SUBADMIN" ? "operations" : "front-desk"),
+      salary: matchingStaff?.salary ? Number(matchingStaff.salary) : 35000,
+    });
+  }
+
+  // Include any staff records not yet matched to User
+  for (const s of staffRecords) {
+    const emailKey = s.email ? s.email.toLowerCase() : "";
+    if (!processedEmails.has(emailKey)) {
+      combined.push({
+        id: s.id,
+        userId: null,
+        staffId: s.id,
+        name: s.name,
+        email: s.email,
+        phone: s.phone,
+        role: s.role,
+        designation: s.designation || "front-desk",
+        salary: Number(s.salary || 35000),
+      });
+    }
+  }
+
+  return combined;
 };
 
 /**
  * ASSIGN MODULE TO SUB-ADMIN:
- * Updates the assigned module (stored in designation) of a staff member.
+ * Updates the assigned module (stored in designation) of a staff member or user.
  */
-export const updateSubAdminModule = async (staffId, moduleName) => {
+export const updateSubAdminModule = async (identifier, moduleName) => {
   if (!moduleName) {
     throw new Error("Module name is required");
   }
 
-  const staff = await prisma.staff.findUnique({ where: { id: staffId } });
+  const cleanModule = moduleName.trim().toLowerCase();
+
+  // 1. Try finding in Staff by id or email
+  let staff = await prisma.staff.findFirst({
+    where: {
+      OR: [{ id: identifier }, { email: identifier }],
+    },
+  });
+
   if (!staff) {
-    const error = new Error(`Staff with id '${staffId}' not found`);
-    error.statusCode = 404;
-    throw error;
+    // 2. If identifier is a User id or email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: identifier }, { email: identifier }],
+      },
+    });
+
+    if (!user) {
+      const error = new Error(`Staff or user with id '${identifier}' not found`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Create staff record for this user
+    staff = await prisma.staff.create({
+      data: {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        designation: cleanModule,
+        salary: 35000,
+      },
+    });
+    return staff;
   }
 
   const updated = await prisma.staff.update({
-    where: { id: staffId },
+    where: { id: staff.id },
     data: {
-      designation: moduleName.trim().toLowerCase(),
+      designation: cleanModule,
     },
   });
 
   return updated;
+};
+
+/**
+ * CREATE A NEW SUB-ADMIN:
+ * Creates credentials in User table for login and manages department module assignment in Staff.
+ */
+export const createSubAdmin = async ({
+  name,
+  email,
+  phone,
+  password,
+  role = "SUBADMIN",
+  module = "front-desk",
+  salary = 35000,
+}) => {
+  if (!name || !email || !phone || !password) {
+    const error = new Error("Name, email, phone, and password are required to create a sub-admin.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPhone = phone.trim();
+  const cleanRole = (role || "SUBADMIN").trim().toUpperCase();
+  const cleanModule = (module || "front-desk").trim().toLowerCase();
+  const cleanSalary = Number(salary) || 35000;
+
+  // Hash password for authentication
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // Check if User already exists with email or phone
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [{ email: cleanEmail }, { phone: cleanPhone }],
+    },
+  });
+
+  let userRecord;
+  if (existingUser) {
+    userRecord = await prisma.user.update({
+      where: { id: existingUser.id },
+      data: {
+        name: name.trim(),
+        role: cleanRole,
+        password: hashedPassword,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        membership: true,
+      },
+    });
+  } else {
+    userRecord = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        password: hashedPassword,
+        role: cleanRole,
+        membership: "GOLD",
+        amount: 0,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        membership: true,
+      },
+    });
+  }
+
+  // Upsert matching Staff record for schedule, department and payroll management
+  const existingStaff = await prisma.staff.findUnique({
+    where: { email: cleanEmail },
+  });
+
+  let staffRecord;
+  if (existingStaff) {
+    staffRecord = await prisma.staff.update({
+      where: { id: existingStaff.id },
+      data: {
+        name: name.trim(),
+        phone: cleanPhone,
+        role: cleanRole,
+        designation: cleanModule,
+        salary: cleanSalary,
+      },
+    });
+  } else {
+    staffRecord = await prisma.staff.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        role: cleanRole,
+        designation: cleanModule,
+        salary: cleanSalary,
+      },
+    });
+  }
+
+  return {
+    id: staffRecord.id,
+    userId: userRecord.id,
+    name: userRecord.name,
+    email: userRecord.email,
+    phone: userRecord.phone,
+    role: userRecord.role,
+    designation: staffRecord.designation,
+    salary: Number(staffRecord.salary),
+  };
 };
 
 /**

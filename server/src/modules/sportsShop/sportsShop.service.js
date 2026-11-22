@@ -91,7 +91,7 @@ export const updateProductStock = async (id, inStock) => {
 
 // 5. Member Checkout & Purchase
 export const processCheckout = async (checkoutData) => {
-  const { userID, items, fulfillmentType } = checkoutData;
+  const { userID, items, fulfillmentType, paymentMethod } = checkoutData;
 
   if (!userID) {
     throw new Error("User ID is required to process checkout");
@@ -171,8 +171,47 @@ export const processCheckout = async (checkoutData) => {
   const discountAmount = Math.round(subtotal * discountRate * 100) / 100;
   const finalTotal = Math.round((subtotal - discountAmount) * 100) / 100;
 
-  // D. Atomic Database Transaction: Deduct stock + create purchase + create line items
-  const purchase = await prisma.$transaction(async (tx) => {
+  // Check virtual card balance if chosen
+  const currentBalance = Number(user.amount || 0);
+  if (paymentMethod === "VIRTUAL_CARD" && currentBalance < finalTotal) {
+    const error = new Error(
+      `Insufficient wallet balance (₹${currentBalance.toFixed(2)}). Order total is ₹${finalTotal.toFixed(2)}. Please top up your wallet.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const summaryStrings = validatedLineItems.map(
+    (item) => `${item.name} x ${item.quantity}`
+  );
+
+  // D. Atomic Database Transaction: Deduct stock + deduct wallet (if VIRTUAL_CARD) + create purchase + create line items
+  const result = await prisma.$transaction(async (tx) => {
+    let balanceAfter = currentBalance;
+
+    if (paymentMethod === "VIRTUAL_CARD") {
+      const updatedUser = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          amount: { decrement: finalTotal },
+        },
+      });
+      balanceAfter = Number(updatedUser.amount);
+
+      await tx.walletTransaction.create({
+        data: {
+          userID: user.id,
+          phone: user.phone,
+          type: "DEBIT",
+          amount: finalTotal,
+          balanceAfter,
+          paymentMethod: "VIRTUAL_CARD",
+          module: "SHOP",
+          description: `Champions Club Pro Shop Purchase (${summaryStrings.join(", ")})`,
+        },
+      });
+    }
+
     // 1. Decrement stock for every product in the cart
     for (const item of validatedLineItems) {
       await tx.product.update({
@@ -185,18 +224,13 @@ export const processCheckout = async (checkoutData) => {
       });
     }
 
-    // 2. Summary text array for legacy compatibility
-    const summaryStrings = validatedLineItems.map(
-      (item) => `${item.name} x ${item.quantity}`
-    );
-
-    // 3. Generate pickup verification code for Click & Collect
+    // 2. Generate pickup verification code for Click & Collect
     const isDelivery = fulfillmentType === "DELIVERY";
     const pickupCode = isDelivery ? null : String(Math.floor(1000 + Math.random() * 9000));
     const deliveryAddress = isDelivery ? (checkoutData.deliveryAddress || "Member registered address") : null;
 
-    // 4. Create the purchase record and line items
-    return await tx.sportShopPurchase.create({
+    // 3. Create the purchase record and line items
+    const createdPurchase = await tx.sportShopPurchase.create({
       data: {
         userID: user.id,
         name: user.name,
@@ -225,7 +259,11 @@ export const processCheckout = async (checkoutData) => {
         },
       },
     });
+
+    return { purchase: createdPurchase, balanceAfter };
   });
+
+  const purchase = result.purchase;
 
   // Send purchase confirmation email
   await sendEmail({
@@ -257,6 +295,7 @@ export const processCheckout = async (checkoutData) => {
     ...purchase,
     subtotal,
     appliedDiscountPercentage: discountRate * 100,
+    walletBalance: result.balanceAfter,
   };
 };
 

@@ -118,7 +118,7 @@ export default function WalletPage() {
         const current = api.auth.getUser();
         if (current) {
           current.amount = updatedBal;
-          localStorage.setItem('champions_user', JSON.stringify(current));
+          api.auth.updateUser(current);
         }
 
         await loadWalletData(true);

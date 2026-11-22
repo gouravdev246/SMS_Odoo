@@ -158,6 +158,7 @@ export const register = async (req, res) => {
         phone: true,
         membership: true,
         role: true,
+        amount: true,
       },
     });
 
@@ -166,6 +167,7 @@ export const register = async (req, res) => {
 
     const fullUser = {
       ...newUser,
+      amount: Number(newUser.amount || 0),
       role: newUser.role || "MEMBER",
       module: null,
     };
@@ -227,6 +229,7 @@ export const login = async (req, res) => {
       membership: account.membership,
       role: account.role,
       module: account.module,
+      amount: Number(account.amount || 0),
     };
 
     const token = generateToken(safeUser);
@@ -278,6 +281,7 @@ export const verifyLoginOtp = async (req, res) => {
       membership: account.membership,
       role: account.role,
       module: account.module,
+      amount: Number(account.amount || 0),
     };
 
     const token = generateToken(safeUser);

@@ -71,6 +71,7 @@ export const api = {
       }
       if (res.user) {
         localStorage.setItem('user', JSON.stringify(res.user));
+        localStorage.setItem('champions_user', JSON.stringify(res.user));
       }
       return res;
     },
@@ -84,21 +85,30 @@ export const api = {
       }
       if (res.user) {
         localStorage.setItem('user', JSON.stringify(res.user));
+        localStorage.setItem('champions_user', JSON.stringify(res.user));
       }
       return res;
     },
     logout: () => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('champions_user');
       return request('/api/auth/logout', { method: 'POST' }).catch(() => {});
     },
     getUser: () => {
-      const user = localStorage.getItem('user');
+      const user = localStorage.getItem('user') || localStorage.getItem('champions_user');
       try {
         return user ? JSON.parse(user) : null;
       } catch {
         return null;
       }
+    },
+    updateUser: (updatedData) => {
+      const current = api.auth.getUser() || {};
+      const merged = { ...current, ...updatedData };
+      localStorage.setItem('user', JSON.stringify(merged));
+      localStorage.setItem('champions_user', JSON.stringify(merged));
+      return merged;
     },
   },
 
@@ -347,6 +357,11 @@ export const api = {
   superAdmin: {
     getOverview: () => request('/api/super-admin/overview'),
     getSubAdmins: () => request('/api/super-admin/sub-admins'),
+    createSubAdmin: (data) =>
+      request('/api/super-admin/sub-admins', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     updateSubAdminModule: (id, moduleName) =>
       request(`/api/super-admin/sub-admins/${encodeURIComponent(id)}/module`, {
         method: 'PUT',

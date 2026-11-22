@@ -194,6 +194,7 @@ export const createStringingRequest = async ({
       : "Standard racket stringing request logged successfully.",
     jobCard: result.jobCard,
     walletTransaction: result.walletTransaction,
+    walletBalance: result.balanceAfter,
   };
 };
 

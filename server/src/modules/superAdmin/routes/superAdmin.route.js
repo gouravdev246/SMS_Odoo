@@ -9,6 +9,7 @@ import {
   deleteModelRecord,
   executeQuery,
   getSubAdmins,
+  createSubAdmin,
   updateSubAdminModule,
   getSportsPricing,
   updateSportsPricing,
@@ -46,8 +47,9 @@ router.delete("/data/:model/:id", deleteModelRecord);
 // Safe read-only SQL diagnostic query runner
 router.post("/query", executeQuery);
 
-// Sub-admin directory and module assignment
+// Sub-admin directory, creation, and module assignment
 router.get("/sub-admins", getSubAdmins);
+router.post("/sub-admins", createSubAdmin);
 router.put("/sub-admins/:id/module", updateSubAdminModule);
 
 // Sports Pricing and Configuration

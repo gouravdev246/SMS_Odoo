@@ -152,6 +152,20 @@ export default function BarMenuPage() {
 
       if (currentUser) {
         try {
+          const walletRes = await api.wallet.getDetails();
+          if (isMounted && walletRes?.virtualCard?.balance !== undefined) {
+            const freshBal = Number(walletRes.virtualCard.balance);
+            setCurrentUser((prev) => {
+              const updated = { ...(prev || {}), amount: freshBal };
+              api.auth.updateUser(updated);
+              return updated;
+            });
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
           const res = await api.cafe.getMyOrders();
           if (isMounted && res?.success && Array.isArray(res.orders)) {
             setRecentOrders(res.orders);
@@ -276,7 +290,7 @@ export default function BarMenuPage() {
         // Update local user's wallet balance
         if (res.walletBalance !== undefined) {
           const updated = { ...currentUser, amount: res.walletBalance };
-          localStorage.setItem('user', JSON.stringify(updated));
+          api.auth.updateUser(updated);
           setCurrentUser(updated);
         }
 

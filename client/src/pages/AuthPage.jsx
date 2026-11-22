@@ -231,7 +231,7 @@ export default function AuthPage({ initialMode = 'login' }) {
 
                       <div className="form-group">
                         <label className="text-xs uppercase tracking-wider text-gray-300 font-bold mb-1.5 d-block">
-                          Phone Number
+                          Email
                         </label>
                         <div className="position-relative">
                           <input

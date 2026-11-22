@@ -31,6 +31,7 @@ export const authenticate = async (req, res, next) => {
         phone: true,
         role: true,
         membership: true,
+        amount: true,
       },
     });
 
@@ -50,6 +51,7 @@ export const authenticate = async (req, res, next) => {
 
     req.user = {
       ...user,
+      amount: Number(user.amount || 0),
       role: effectiveRole,
       module: staff?.designation || decoded.module || null,
     };

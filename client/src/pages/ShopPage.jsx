@@ -38,7 +38,7 @@ export default function ShopPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // User details
-  const currentUser = api.auth.getUser();
+  const [currentUser, setCurrentUser] = useState(api.auth.getUser());
   const membershipTier = currentUser?.membership || 'NONE';
 
   // Discount percentage by membership tier
@@ -99,10 +99,29 @@ export default function ShopPage() {
 
   useEffect(() => {
     let isMounted = true;
-    Promise.resolve().then(() => {
-      fetchProducts(isMounted);
-      fetchUserHistory(isMounted);
-    });
+
+    async function loadWallet() {
+      const user = api.auth.getUser();
+      if (!user) return;
+      try {
+        const walletRes = await api.wallet.getDetails();
+        if (isMounted && walletRes?.virtualCard?.balance !== undefined) {
+          const freshAmount = Number(walletRes.virtualCard.balance);
+          setCurrentUser((prev) => {
+            const updated = { ...(prev || {}), amount: freshAmount };
+            api.auth.updateUser(updated);
+            return updated;
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    loadWallet();
+    fetchProducts(isMounted);
+    fetchUserHistory(isMounted);
+
     return () => {
       isMounted = false;
     };
@@ -208,8 +227,10 @@ export default function ShopPage() {
 
         // If virtual card was debited, update local balance
         if (paymentMethod === 'VIRTUAL_CARD') {
-          const updated = { ...currentUser, amount: Math.max(0, userAmount - cartFinalTotal) };
-          localStorage.setItem('champions_user', JSON.stringify(updated));
+          const freshBalance = res.walletBalance !== undefined ? Number(res.walletBalance) : Math.max(0, userAmount - cartFinalTotal);
+          const updated = { ...currentUser, amount: freshBalance };
+          api.auth.updateUser(updated);
+          setCurrentUser(updated);
         }
 
         // Refresh products stock & user history
@@ -268,8 +289,10 @@ export default function ShopPage() {
         setStringingForm((prev) => ({ ...prev, racketModel: '', notes: '' }));
 
         if (stringingForm.paymentMethod === 'VIRTUAL_CARD') {
-          const updated = { ...currentUser, amount: Math.max(0, userAmount - price) };
-          localStorage.setItem('champions_user', JSON.stringify(updated));
+          const freshBalance = res.walletBalance !== undefined ? Number(res.walletBalance) : Math.max(0, userAmount - price);
+          const updated = { ...currentUser, amount: freshBalance };
+          api.auth.updateUser(updated);
+          setCurrentUser(updated);
         }
 
         await fetchUserHistory(true);
