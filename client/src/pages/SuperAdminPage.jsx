@@ -45,10 +45,22 @@ export default function SuperAdminPage() {
     setError('');
     try {
       const [finRes, ovRes, subRes, bookingsRes] = await Promise.all([
-        api.financials.getConsolidated(currentPeriod).catch(() => ({ report: null })),
-        api.superAdmin.getOverview().catch(() => ({ counts: {}, modules: {}, recentActivity: {} })),
-        api.superAdmin.getSubAdmins().catch(() => ({ subAdmins: [] })),
-        api.superAdmin.getCourtBookings().catch(() => ({ data: [] })),
+        api.financials.getConsolidated(currentPeriod).catch((err) => {
+          console.warn('Financials load note:', err.message);
+          return { report: null };
+        }),
+        api.superAdmin.getOverview().catch((err) => {
+          console.warn('Overview load note:', err.message);
+          return { counts: {}, modules: {}, recentActivity: {} };
+        }),
+        api.superAdmin.getSubAdmins().catch((err) => {
+          console.warn('SubAdmins load note:', err.message);
+          return { subAdmins: [] };
+        }),
+        api.superAdmin.getCourtBookings().catch((err) => {
+          console.warn('CourtBookings load note:', err.message);
+          return { data: [] };
+        }),
       ]);
 
       const finData = finRes?.report || finRes || {};
@@ -68,7 +80,15 @@ export default function SuperAdminPage() {
     let isMounted = true;
     Promise.resolve().then(async () => {
       if (!isMounted) return;
-      loadDashboardData(period);
+      try {
+        const meRes = await api.auth.getMe().catch(() => null);
+        if (meRes?.user && isMounted) {
+          api.auth.updateUser(meRes.user);
+        }
+      } catch {}
+      if (isMounted) {
+        loadDashboardData(period);
+      }
     });
     return () => {
       isMounted = false;

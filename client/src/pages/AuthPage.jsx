@@ -189,7 +189,7 @@ export default function AuthPage({ initialMode = 'login' }) {
         email: registerForm.email.trim().toLowerCase(),
         phone: registerForm.phone,
         password: registerForm.password,
-        membership: registerForm.level ? registerForm.level.toUpperCase() : 'JUNIOR',
+        membership: 'JUNIOR',
         otp: registerForm.otp.trim(),
       });
 

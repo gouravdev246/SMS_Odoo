@@ -6,6 +6,7 @@ import {
   getMembershipStatusHandler,
   renewMembershipHandler,
   upgradeMembershipHandler,
+  purchaseMembershipHandler,
 } from "../controllers/membership.controller.js";
 import { authenticate, requireRoles } from "../../../common/middlewares/auth.middleware.js";
 
@@ -18,6 +19,8 @@ router.get("/plans", getMembershipPlansHandler);
 router.get("/status", authenticate, getMembershipStatusHandler);
 router.post("/renew", authenticate, renewMembershipHandler);
 router.post("/upgrade", authenticate, upgradeMembershipHandler);
+router.post("/purchase", authenticate, purchaseMembershipHandler);
+router.post("/subscribe", authenticate, purchaseMembershipHandler);
 
 // Staff / Admin endpoints
 // Retrieve members whose membership is expiring in 2 days (or ?days=X)

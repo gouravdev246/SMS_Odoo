@@ -25,40 +25,35 @@ const router = Router();
 // All super admin routes require authentication
 router.use(authenticate);
 
-// Sub-admin directory, creation, and module assignment (accessible to SUPERADMIN, ADMIN, and SUBADMIN)
+// 1. Dashboard, statistics, directory & read operations (accessible to SUPERADMIN, ADMIN, and SUBADMIN)
+router.get("/verify", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), verifySuperAdminStatus);
 router.get("/sub-admins", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getSubAdmins);
 router.post("/sub-admins", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), createSubAdmin);
 router.put("/sub-admins/:id/module", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), updateSubAdminModule);
 
-// All core management, schema exploration, database access, and pricing strictly require SUPERADMIN or ADMIN
-router.use(requireRoles("SUPERADMIN", "ADMIN"));
+router.get("/overview", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getOverview);
+router.get("/models", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), listModels);
+router.get("/data/:model", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getModelData);
+router.get("/data/:model/:id", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getModelRecordById);
+router.get("/sports/pricing", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getSportsPricing);
+router.get("/sports/config", requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"), getSportsConfig);
 
-// Super admin status verification
-router.get("/verify", verifySuperAdminStatus);
+// 2. Core database modifications, raw SQL queries, and role elevations strictly require SUPERADMIN or ADMIN
+const superAdminOnly = requireRoles("SUPERADMIN", "ADMIN");
 
 // User role management (assign SUPERADMIN, ADMIN, SUBADMIN, STAFF, MEMBER)
-router.put("/users/:id/role", changeUserRole);
+router.put("/users/:id/role", superAdminOnly, changeUserRole);
 
-// Multi-module system overview and statistics
-router.get("/overview", getOverview);
-
-// Database schema explorer - list all models and field types
-router.get("/models", listModels);
-
-// Universal CRUD endpoints for ANY table in the database
-router.get("/data/:model", getModelData);
-router.get("/data/:model/:id", getModelRecordById);
-router.post("/data/:model", createModelRecord);
-router.put("/data/:model/:id", updateModelRecord);
-router.delete("/data/:model/:id", deleteModelRecord);
+// Universal Write CRUD endpoints
+router.post("/data/:model", superAdminOnly, createModelRecord);
+router.put("/data/:model/:id", superAdminOnly, updateModelRecord);
+router.delete("/data/:model/:id", superAdminOnly, deleteModelRecord);
 
 // Safe read-only SQL diagnostic query runner
-router.post("/query", executeQuery);
+router.post("/query", superAdminOnly, executeQuery);
 
-// Sports Pricing and Configuration
-router.get("/sports/pricing", getSportsPricing);
-router.put("/sports/pricing", updateSportsPricing);
-router.get("/sports/config", getSportsConfig);
-router.put("/sports/config", updateSportsConfig);
+// Sports Pricing and Configuration updates
+router.put("/sports/pricing", superAdminOnly, updateSportsPricing);
+router.put("/sports/config", superAdminOnly, updateSportsConfig);
 
 export default router;

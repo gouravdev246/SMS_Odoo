@@ -4,9 +4,9 @@ import { authenticate, requireRoles } from "../../common/middlewares/auth.middle
 
 const router = Router();
 
-// Only Super Admin and Admin can access executive financials
+// Super Admin, Admin, and SubAdmin can access executive financials
 router.use(authenticate);
-router.use(requireRoles("SUPERADMIN", "ADMIN"));
+router.use(requireRoles("SUPERADMIN", "ADMIN", "SUBADMIN"));
 
 // Executive Financial Report endpoint
 router.get("/", getFinancialReportHandler);

@@ -68,11 +68,23 @@ export default function Navbar({ onOpenSidebar }) {
                     Court Bar
                   </Link>
                   <Link
+                    to="/membership"
+                    className={`nav-link-btn ${isActive('/membership') ? 'active' : ''}`}
+                  >
+                    Membership
+                  </Link>
+                  {/* <Link
+                    to="/membership"
+                    className={`nav-link-btn ${isActive('/membership') ? 'active' : ''}`}
+                  >
+                    Membership
+                  </Link>
+                  <Link
                     to="/about"
                     className={`nav-link-btn ${isActive('/about') ? 'active' : ''}`}
                   >
                     About Us
-                  </Link>
+                  </Link> */}
                   <Link
                     to="/contact"
                     className={`nav-link-btn ${isActive('/contact') ? 'active' : ''}`}

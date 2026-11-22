@@ -5,6 +5,7 @@ import {
   getMemberMembershipStatus,
   renewMembership,
   upgradeMembership,
+  purchaseMembership,
 } from "../services/membership.service.js";
 
 /**
@@ -110,6 +111,47 @@ export const upgradeMembershipHandler = async (req, res) => {
     return res.status(statusCode).json({
       success: false,
       message: error.message || "Failed to upgrade membership",
+    });
+  }
+};
+
+/**
+ * POST /api/membership/purchase (and /subscribe)
+ * Allows member to purchase / subscribe to ANY tier (GOLD, SILVER, JUNIOR) directly.
+ */
+export const purchaseMembershipHandler = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+
+    const { tier, targetTier, paymentMethod = "VIRTUAL_CARD" } = req.body;
+    const selectedTier = tier || targetTier;
+
+    if (!selectedTier) {
+      return res.status(400).json({
+        success: false,
+        message: "Subscription tier is required (GOLD, SILVER, JUNIOR)",
+      });
+    }
+
+    const result = await purchaseMembership({
+      userId,
+      tier: selectedTier,
+      paymentMethod,
+    });
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("purchaseMembershipHandler error:", error);
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Failed to purchase membership subscription",
     });
   }
 };

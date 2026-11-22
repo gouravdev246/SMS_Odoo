@@ -102,12 +102,19 @@ export default function MembershipPage() {
   const [alert, setAlert] = useState(null);
   const [activeFaq, setActiveFaq] = useState(0);
 
-  // Modals
+  // Modals & Purchase Selection
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [selectedTier, setSelectedTier] = useState('GOLD');
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [selectedUpgradeTier, setSelectedUpgradeTier] = useState('GOLD');
   const [paymentMethod, setPaymentMethod] = useState('VIRTUAL_CARD');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const openPurchaseModal = (tierCode) => {
+    setSelectedTier(tierCode || 'GOLD');
+    setShowPurchaseModal(true);
+  };
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
@@ -275,10 +282,64 @@ export default function MembershipPage() {
 
   // Calculate upgrade cost
   const getUpgradeCost = (targetTierCode) => {
-    const targetPlan = plans.find((p) => p.tier === targetTierCode);
+    const targetPlan = plans.find((p) => p.tier === targetTierCode) || DEFAULT_PLANS.find((p) => p.tier === targetTierCode);
     if (!targetPlan) return 0;
     if (!currentPlan) return targetPlan.annualFee;
     return Math.max(0, targetPlan.annualFee - currentPlan.annualFee);
+  };
+
+  // Calculate actual payable fee for any tier (renewal, upgrade, or new subscription)
+  const getPayableFee = (targetTierCode) => {
+    const targetPlan = plans.find((p) => p.tier === targetTierCode) || DEFAULT_PLANS.find((p) => p.tier === targetTierCode);
+    if (!targetPlan) return 0;
+    if (targetTierCode === currentTier) {
+      return targetPlan.renewalFee || targetPlan.annualFee;
+    }
+    if (currentPlan && targetPlan.annualFee > currentPlan.annualFee) {
+      return targetPlan.annualFee - currentPlan.annualFee;
+    }
+    return targetPlan.annualFee;
+  };
+
+  // Unified Self-Service Purchase Handler
+  const handlePurchase = async () => {
+    setIsSubmitting(true);
+    try {
+      const res = await api.membership.purchase({
+        tier: selectedTier,
+        paymentMethod,
+      });
+
+      if (res?.success) {
+        showAlert(
+          'success',
+          res.message || `Congratulations! You have successfully subscribed to ${selectedTier} plan!`
+        );
+        setShowPurchaseModal(false);
+        setShowRenewModal(false);
+        setShowUpgradeModal(false);
+
+        // Update local session
+        if (currentUser) {
+          const updated = {
+            ...currentUser,
+            membership: res.membershipTier || selectedTier,
+            amount: res.walletBalance ?? currentUser.amount,
+            renewalDate: res.newRenewalDate,
+          };
+          localStorage.setItem('user', JSON.stringify(updated));
+          localStorage.setItem('champions_user', JSON.stringify(updated));
+          setCurrentUser(updated);
+        }
+        await refreshStatus();
+      } else {
+        showAlert('error', res?.message || 'Failed to complete subscription purchase.');
+      }
+    } catch (err) {
+      showAlert('error', err.message || 'Error occurred while processing subscription purchase.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -455,33 +516,25 @@ export default function MembershipPage() {
               </div>
 
               <div className="flex items-center gap-3 w-full sm:w-auto">
-                {/* Renew Button */}
+                {/* Select / Change Subscription Button */}
                 <button
-                  onClick={() => setShowRenewModal(true)}
-                  className="flex-1 sm:flex-none px-6 py-3 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-sm transition-all shadow-lg hover:shadow-[#C6EF2E]/20 flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => openPurchaseModal(currentTier !== 'NONE' ? currentTier : 'GOLD')}
+                  className="flex-1 sm:flex-none px-6 py-3 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-sm transition-all shadow-lg hover:shadow-[#C6EF2E]/20 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <i className="fa-solid fa-arrows-rotate"></i>
-                  Renew (+1 Year)
-                  {currentPlan && (
-                    <span className="ml-1 text-xs bg-black/20 px-2 py-0.5 rounded-md font-bold">
-                      {formatINR(currentPlan.renewalFee || currentPlan.annualFee)}
-                    </span>
-                  )}
+                  <i className="fa-solid fa-crown"></i>
+                  <span>Select / Change Tier</span>
                 </button>
 
-                {/* Upgrade Button (Disabled if already Gold) */}
-                {currentTier !== 'GOLD' && (
-                  <button
-                    onClick={() => {
-                      setSelectedUpgradeTier(currentTier === 'JUNIOR' ? 'SILVER' : 'GOLD');
-                      setShowUpgradeModal(true);
-                    }}
-                    className="flex-1 sm:flex-none px-5 py-3 rounded-2xl bg-[#1e2022] hover:bg-[#282a2d] text-white hover:text-[#C6EF2E] font-bold text-sm transition-all border border-[#36393b] hover:border-[#C6EF2E]/50 flex items-center justify-center gap-2"
-                  >
-                    <i className="fa-solid fa-arrow-up-right-dots"></i>
-                    Upgrade Tier
-                  </button>
-                )}
+                {/* Renew Button */}
+                <button
+                  type="button"
+                  onClick={() => openPurchaseModal(currentTier)}
+                  className="flex-1 sm:flex-none px-5 py-3 rounded-2xl bg-[#1e2022] hover:bg-[#282a2d] text-white hover:text-[#C6EF2E] font-bold text-sm transition-all border border-[#36393b] hover:border-[#C6EF2E]/50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <i className="fa-solid fa-arrows-rotate text-[#C6EF2E]"></i>
+                  <span>Renew Active Plan</span>
+                </button>
               </div>
             </div>
           </div>
@@ -628,37 +681,38 @@ export default function MembershipPage() {
                           <div className="mt-4 pt-4 border-t border-[#252728]">
                             {isCurrent ? (
                               <button
-                                onClick={() => setShowRenewModal(true)}
-                                className="w-full py-3.5 rounded-2xl bg-[#C6EF2E]/20 border border-[#C6EF2E] text-[#C6EF2E] hover:bg-[#C6EF2E] hover:text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2"
+                                type="button"
+                                onClick={() => openPurchaseModal(plan.tier)}
+                                className="w-full py-3.5 rounded-2xl bg-[#C6EF2E]/20 border border-[#C6EF2E] text-[#C6EF2E] hover:bg-[#C6EF2E] hover:text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                               >
                                 <i className="fa-solid fa-arrows-rotate"></i>
                                 Renew Active Plan ({formatINR(plan.renewalFee || plan.annualFee)})
                               </button>
-                            ) : canUpgrade ? (
-                              <button
-                                onClick={() => {
-                                  setSelectedUpgradeTier(plan.tier);
-                                  setShowUpgradeModal(true);
-                                }}
-                                className="w-full py-3.5 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-[#C6EF2E]/20"
-                              >
-                                <i className="fa-solid fa-arrow-up-right-dots"></i>
-                                Upgrade for {formatINR(getUpgradeCost(plan.tier))}
-                              </button>
                             ) : currentUser ? (
-                              <div className="text-center py-3 text-xs text-gray-500 font-medium">
-                                Tier standard rate
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openPurchaseModal(plan.tier)}
+                                className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                  plan.isPopular || plan.tier === 'GOLD'
+                                    ? 'bg-[#C6EF2E] hover:bg-[#b0d826] text-black shadow-lg hover:shadow-[#C6EF2E]/20'
+                                    : 'bg-[#222426] hover:bg-[#2e3134] text-white border border-gray-700 hover:border-[#C6EF2E]'
+                                }`}
+                              >
+                                <i className={`fa-solid ${canUpgrade ? 'fa-arrow-up-right-dots' : 'fa-crown'}`}></i>
+                                {canUpgrade
+                                  ? `Upgrade to ${plan.name} (${formatINR(getUpgradeCost(plan.tier))})`
+                                  : `Select & Subscribe (${formatINR(plan.annualFee)})`}
+                              </button>
                             ) : (
                               <Link
-                                to={`/login?register=true&tier=${plan.tier}`}
+                                to={`/login?redirect=/membership&tier=${plan.tier}`}
                                 className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 ${
                                   plan.isPopular || plan.tier === 'GOLD'
                                     ? 'bg-[#C6EF2E] hover:bg-[#b0d826] text-black shadow-lg hover:shadow-[#C6EF2E]/20'
                                     : 'bg-[#1f2123] hover:bg-[#2b2e30] text-white border border-gray-700'
                                 }`}
                               >
-                                <span>Join Club</span>
+                                <span>Sign In to Subscribe</span>
                                 <i className="fa-solid fa-arrow-right text-xs"></i>
                               </Link>
                             )}
@@ -772,299 +826,279 @@ export default function MembershipPage() {
         </div>
       </div>
 
-      {/* RENEWAL MODAL */}
-      {showRenewModal && (
+      {/* UNIFIED SELF-SERVICE SUBSCRIPTION SELECTION & PURCHASE MODAL */}
+      {(showPurchaseModal || showRenewModal || showUpgradeModal) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-md bg-[#161718] border border-[#2b2d2e] rounded-3xl p-6 md:p-8 shadow-2xl">
+          <div className="relative w-full max-w-xl bg-[#161718] border border-[#2b2d2e] rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setShowRenewModal(false)}
-              className="absolute top-5 right-5 text-gray-400 hover:text-white transition-colors"
+              onClick={() => {
+                setShowPurchaseModal(false);
+                setShowRenewModal(false);
+                setShowUpgradeModal(false);
+              }}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white transition-colors cursor-pointer"
             >
               <i className="fa-solid fa-xmark text-lg"></i>
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#C6EF2E]/10 border border-[#C6EF2E]/30 flex items-center justify-center text-[#C6EF2E] text-xl">
-                <i className="fa-solid fa-arrows-rotate"></i>
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${
+                  selectedTier === 'GOLD'
+                    ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                    : selectedTier === 'SILVER'
+                    ? 'bg-slate-300/20 text-slate-200 border border-slate-300/40'
+                    : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
+                }`}
+              >
+                <i
+                  className={`fa-solid ${
+                    selectedTier === 'GOLD'
+                      ? 'fa-crown'
+                      : selectedTier === 'SILVER'
+                      ? 'fa-shield-halved'
+                      : 'fa-star'
+                  }`}
+                ></i>
               </div>
               <div>
-                <h3 className="text-xl font-black text-white">Renew Membership</h3>
-                <p className="text-xs text-gray-400">Extend your {currentTier} tier for +365 Days</p>
+                <h3 className="text-xl font-black text-white">Select & Purchase Subscription</h3>
+                <p className="text-xs text-gray-400">
+                  Current: <span className="text-[#C6EF2E] font-bold">{currentTier} Tier</span> | 1-Year Full Privileges
+                </p>
               </div>
             </div>
 
-            {/* Plan Fee Breakdown */}
-            <div className="bg-[#101112] border border-[#232526] rounded-2xl p-4 my-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-400">
-                <span>Tier:</span>
-                <span className="font-bold text-white">{currentPlan?.name || currentTier}</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Standard Annual Fee:</span>
-                <span className="line-through">{formatINR(currentPlan?.annualFee || 15000)}</span>
-              </div>
-              <div className="flex justify-between text-[#C6EF2E] font-semibold">
-                <span>Member Renewal Special:</span>
-                <span>{formatINR(currentPlan?.renewalFee || currentPlan?.annualFee || 13500)}</span>
-              </div>
-              <div className="border-t border-[#262828] pt-2 flex justify-between font-extrabold text-white text-base">
-                <span>Total Amount Due:</span>
-                <span className="text-[#C6EF2E]">
-                  {formatINR(currentPlan?.renewalFee || currentPlan?.annualFee || 13500)}
-                </span>
-              </div>
-            </div>
-
-            {/* Payment Method Selector */}
-            <div className="mb-6">
+            {/* Step 1: Interactive Tier Switcher (GOLD, SILVER, JUNIOR) */}
+            <div className="mb-5">
               <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-                Select Payment Source
+                1. Select Subscription Tier:
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('VIRTUAL_CARD')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    paymentMethod === 'VIRTUAL_CARD'
-                      ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
-                      : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
-                  }`}
-                >
-                  <div className="text-xs font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-wallet text-[#C6EF2E]"></i> Virtual Card
-                  </div>
-                  <div className="text-[11px] text-gray-400 mt-1">Bal: {formatINR(walletBalance)}</div>
-                </button>
+              <div className="grid grid-cols-3 gap-2.5">
+                {['GOLD', 'SILVER', 'JUNIOR'].map((tierCode) => {
+                  const isSelected = selectedTier === tierCode;
+                  const isUserActive = currentTier === tierCode;
+                  const payable = getPayableFee(tierCode);
 
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('UPI_ONLINE')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    paymentMethod === 'UPI_ONLINE'
-                      ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
-                      : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
-                  }`}
-                >
-                  <div className="text-xs font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-mobile-screen-button text-[#C6EF2E]"></i> UPI / Gateway
-                  </div>
-                  <div className="text-[11px] text-gray-400 mt-1">Instant Bank Transfer</div>
-                </button>
-              </div>
-
-              {/* Insufficient balance warning if paying via virtual card */}
-              {paymentMethod === 'VIRTUAL_CARD' &&
-                walletBalance < (currentPlan?.renewalFee || currentPlan?.annualFee || 13500) && (
-                  <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
-                    <span>Low balance. Please top up your wallet.</span>
-                    <Link to="/wallet" className="font-bold underline text-[#C6EF2E]">
-                      Go to Wallet
-                    </Link>
-                  </div>
-                )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowRenewModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-[#202223] hover:bg-[#282a2b] text-gray-300 font-bold text-sm transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleRenew}
-                disabled={
-                  isSubmitting ||
-                  (paymentMethod === 'VIRTUAL_CARD' &&
-                    walletBalance < (currentPlan?.renewalFee || currentPlan?.annualFee || 13500))
-                }
-                className="flex-1 py-3 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] disabled:opacity-50 text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <i className="fa-solid fa-circle-notch fa-spin"></i> Processing...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-check"></i> Confirm Renewal
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* UPGRADE MODAL */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-lg bg-[#161718] border border-[#2b2d2e] rounded-3xl p-6 md:p-8 shadow-2xl">
-            <button
-              onClick={() => setShowUpgradeModal(false)}
-              className="absolute top-5 right-5 text-gray-400 hover:text-white transition-colors"
-            >
-              <i className="fa-solid fa-xmark text-lg"></i>
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-300 text-xl">
-                <i className="fa-solid fa-crown"></i>
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-white">Upgrade Membership Tier</h3>
-                <p className="text-xs text-gray-400">Current: {currentTier} Tier | Prorated Fee</p>
-              </div>
-            </div>
-
-            {/* Target Tier Selection */}
-            <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-                Choose Target Tier
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {plans
-                  .filter((p) => p.tier !== currentTier && getUpgradeCost(p.tier) > 0)
-                  .map((p) => (
+                  return (
                     <button
-                      key={p.tier}
+                      key={tierCode}
                       type="button"
-                      onClick={() => setSelectedUpgradeTier(p.tier)}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        selectedUpgradeTier === p.tier
-                          ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
-                          : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
+                      onClick={() => setSelectedTier(tierCode)}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                        isSelected
+                          ? 'bg-[#C6EF2E]/15 border-[#C6EF2E] shadow-lg shadow-[#C6EF2E]/10'
+                          : 'bg-[#1c1d1f] border-[#292b2c] hover:border-gray-600 text-gray-400'
                       }`}
                     >
-                      <div className="text-xs font-bold flex items-center justify-between">
-                        <span>{p.name}</span>
-                        {p.tier === 'GOLD' && (
-                          <i className="fa-solid fa-crown text-amber-300 text-[11px]"></i>
-                        )}
+                      {isUserActive && (
+                        <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded-full bg-[#C6EF2E] text-black text-[9px] font-black uppercase">
+                          Active
+                        </span>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-black ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                          {tierCode}
+                        </span>
+                        <i
+                          className={`fa-solid ${
+                            tierCode === 'GOLD'
+                              ? 'fa-crown text-amber-400 text-xs'
+                              : tierCode === 'SILVER'
+                              ? 'fa-shield text-slate-300 text-xs'
+                              : 'fa-star text-emerald-400 text-xs'
+                          }`}
+                        ></i>
                       </div>
-                      <div className="text-[11px] text-[#C6EF2E] font-semibold mt-1">
-                        + {formatINR(getUpgradeCost(p.tier))} upgrade
+                      <div className="text-[11px] font-bold text-[#C6EF2E] mt-1.5">
+                        {formatINR(payable)}
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        {isUserActive ? 'Renewal / yr' : '1 Year Pass'}
                       </div>
                     </button>
-                  ))}
+                  );
+                })}
               </div>
             </div>
 
-            {/* Upgrade Perks Comparison Matrix */}
-            <div className="bg-[#101112] border border-[#232526] rounded-2xl p-4 my-4 space-y-2 text-xs">
-              <div className="text-gray-400 font-semibold mb-2 flex items-center gap-1.5">
-                <i className="fa-solid fa-sparkles text-[#C6EF2E]"></i> Benefit Increase Summary:
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-[#18191a] p-2 rounded-xl">
-                  <div className="text-[10px] text-gray-400">Court Discount</div>
-                  <div className="font-bold text-[#C6EF2E]">
-                    {currentPlan?.courtDiscount ?? 10}% &rarr;{' '}
-                    {plans.find((p) => p.tier === selectedUpgradeTier)?.courtDiscount ?? 20}%
-                  </div>
-                </div>
-                <div className="bg-[#18191a] p-2 rounded-xl">
-                  <div className="text-[10px] text-gray-400">Pro Shop</div>
-                  <div className="font-bold text-[#C6EF2E]">
-                    {currentPlan?.shopDiscount ?? 15}% &rarr;{' '}
-                    {plans.find((p) => p.tier === selectedUpgradeTier)?.shopDiscount ?? 30}%
-                  </div>
-                </div>
-                <div className="bg-[#18191a] p-2 rounded-xl">
-                  <div className="text-[10px] text-gray-400">Advance Window</div>
-                  <div className="font-bold text-[#C6EF2E]">
-                    {currentPlan?.advanceBookingDays ?? 4}d &rarr;{' '}
-                    {plans.find((p) => p.tier === selectedUpgradeTier)?.advanceBookingDays ?? 7}d
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-[#262828] pt-2 mt-3 flex justify-between font-extrabold text-white text-sm">
-                <span>Net Upgrade Fee Payable:</span>
-                <span className="text-[#C6EF2E]">{formatINR(getUpgradeCost(selectedUpgradeTier))}</span>
-              </div>
-            </div>
+            {/* Step 2: Selected Plan Benefits & Price Breakdown */}
+            {(() => {
+              const selectedPlan =
+                plans.find((p) => p.tier === selectedTier) ||
+                DEFAULT_PLANS.find((p) => p.tier === selectedTier);
+              const payableFee = getPayableFee(selectedTier);
+              const isRenewal = selectedTier === currentTier;
+              const isUpgrade = currentPlan && selectedPlan.annualFee > currentPlan.annualFee && !isRenewal;
+              const diffSavings = isRenewal
+                ? selectedPlan.annualFee - (selectedPlan.renewalFee || selectedPlan.annualFee)
+                : isUpgrade
+                ? currentPlan.annualFee
+                : 0;
 
-            {/* Payment Source */}
-            <div className="mb-6">
-              <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-                Payment Source
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('VIRTUAL_CARD')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    paymentMethod === 'VIRTUAL_CARD'
-                      ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
-                      : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
-                  }`}
-                >
-                  <div className="text-xs font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-wallet text-[#C6EF2E]"></i> Virtual Card
-                  </div>
-                  <div className="text-[11px] text-gray-400 mt-1">Bal: {formatINR(walletBalance)}</div>
-                </button>
+              return (
+                <>
+                  <div className="bg-[#101112] border border-[#232526] rounded-2xl p-4 mb-5 text-xs space-y-2.5">
+                    <div className="flex justify-between items-center text-gray-300">
+                      <span>Subscription Tier:</span>
+                      <span className="font-extrabold text-white text-sm">
+                        {selectedPlan?.name || selectedTier}
+                      </span>
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('UPI_ONLINE')}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    paymentMethod === 'UPI_ONLINE'
-                      ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
-                      : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
-                  }`}
-                >
-                  <div className="text-xs font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-mobile-screen-button text-[#C6EF2E]"></i> UPI / Gateway
-                  </div>
-                  <div className="text-[11px] text-gray-400 mt-1">Instant Bank Transfer</div>
-                </button>
-              </div>
+                    <div className="grid grid-cols-4 gap-2 text-center pt-2 pb-1 border-t border-[#232526]">
+                      <div className="bg-[#18191a] p-2 rounded-xl border border-[#262829]">
+                        <div className="text-[10px] text-gray-400 uppercase">Courts</div>
+                        <div className="font-black text-[#C6EF2E] text-xs">
+                          {selectedPlan?.courtDiscount}% OFF
+                        </div>
+                      </div>
+                      <div className="bg-[#18191a] p-2 rounded-xl border border-[#262829]">
+                        <div className="text-[10px] text-gray-400 uppercase">Pro Shop</div>
+                        <div className="font-black text-[#C6EF2E] text-xs">
+                          {selectedPlan?.shopDiscount}% OFF
+                        </div>
+                      </div>
+                      <div className="bg-[#18191a] p-2 rounded-xl border border-[#262829]">
+                        <div className="text-[10px] text-gray-400 uppercase">Cafe/Bar</div>
+                        <div className="font-black text-[#C6EF2E] text-xs">
+                          {selectedPlan?.cafeDiscount}% OFF
+                        </div>
+                      </div>
+                      <div className="bg-[#18191a] p-2 rounded-xl border border-[#262829]">
+                        <div className="text-[10px] text-gray-400 uppercase">Advance</div>
+                        <div className="font-black text-[#C6EF2E] text-xs">
+                          {selectedPlan?.advanceBookingDays} Days
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Insufficient balance warning */}
-              {paymentMethod === 'VIRTUAL_CARD' &&
-                walletBalance < getUpgradeCost(selectedUpgradeTier) && (
-                  <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
-                    <span>Insufficient balance to cover upgrade difference.</span>
-                    <Link to="/wallet" className="font-bold underline text-[#C6EF2E]">
-                      Top Up Wallet
-                    </Link>
-                  </div>
-                )}
-            </div>
+                    <div className="pt-2 border-t border-[#232526] space-y-1.5">
+                      <div className="flex justify-between text-gray-400">
+                        <span>Standard Annual Rate:</span>
+                        <span>{formatINR(selectedPlan?.annualFee)}</span>
+                      </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowUpgradeModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-[#202223] hover:bg-[#282a2b] text-gray-300 font-bold text-sm transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleUpgrade}
-                disabled={
-                  isSubmitting ||
-                  (paymentMethod === 'VIRTUAL_CARD' &&
-                    walletBalance < getUpgradeCost(selectedUpgradeTier))
-                }
-                className="flex-1 py-3 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] disabled:opacity-50 text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <i className="fa-solid fa-circle-notch fa-spin"></i> Processing...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-crown"></i> Confirm Upgrade
-                  </>
-                )}
-              </button>
-            </div>
+                      {isRenewal && diffSavings > 0 && (
+                        <div className="flex justify-between text-[#C6EF2E]">
+                          <span>Member Renewal Special Discount:</span>
+                          <span>- {formatINR(diffSavings)}</span>
+                        </div>
+                      )}
+
+                      {isUpgrade && (
+                        <div className="flex justify-between text-amber-300">
+                          <span>Prorated Upgrade Credit (from {currentTier}):</span>
+                          <span>- {formatINR(currentPlan?.annualFee)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between font-extrabold text-white text-base pt-1 border-t border-[#2a2c2d]">
+                        <span>Net Amount Due:</span>
+                        <span className="text-[#C6EF2E]">{formatINR(payableFee)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3: Payment Method Selector */}
+                  <div className="mb-6">
+                    <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
+                      2. Select Payment Method:
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('VIRTUAL_CARD')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                          paymentMethod === 'VIRTUAL_CARD'
+                            ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
+                            : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <i className="fa-solid fa-wallet text-[#C6EF2E]"></i> Virtual Card Wallet
+                        </div>
+                        <div className="text-[11px] text-gray-300 mt-1 font-mono">
+                          Balance: {formatINR(walletBalance)}
+                        </div>
+                        {paymentMethod === 'VIRTUAL_CARD' && (
+                          <div
+                            className={`text-[10px] mt-1 font-medium ${
+                              walletBalance >= payableFee ? 'text-emerald-400' : 'text-rose-400'
+                            }`}
+                          >
+                            {walletBalance >= payableFee
+                              ? `Remaining: ${formatINR(walletBalance - payableFee)}`
+                              : 'Insufficient wallet balance'}
+                          </div>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('UPI_ONLINE')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                          paymentMethod === 'UPI_ONLINE'
+                            ? 'bg-[#C6EF2E]/10 border-[#C6EF2E] text-white'
+                            : 'bg-[#1a1b1c] border-[#292b2c] text-gray-400 hover:border-gray-600'
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <i className="fa-solid fa-mobile-screen-button text-[#C6EF2E]"></i> UPI / Net Banking
+                        </div>
+                        <div className="text-[11px] text-gray-300 mt-1">Instant Digital Transfer</div>
+                        <div className="text-[10px] text-gray-400 mt-1">Cards, UPI & Net Banking</div>
+                      </button>
+                    </div>
+
+                    {/* Low balance warning */}
+                    {paymentMethod === 'VIRTUAL_CARD' && walletBalance < payableFee && (
+                      <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+                        <span>Wallet needs ₹{(payableFee - walletBalance).toLocaleString('en-IN')} more to pay.</span>
+                        <Link to="/wallet" className="font-bold underline text-[#C6EF2E] hover:text-white">
+                          Top Up Wallet Now &rarr;
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPurchaseModal(false);
+                        setShowRenewModal(false);
+                        setShowUpgradeModal(false);
+                      }}
+                      className="flex-1 py-3 rounded-2xl bg-[#202223] hover:bg-[#282a2d] text-gray-300 font-bold text-sm transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePurchase}
+                      disabled={
+                        isSubmitting ||
+                        (paymentMethod === 'VIRTUAL_CARD' && walletBalance < payableFee)
+                      }
+                      className="flex-1 py-3 rounded-2xl bg-[#C6EF2E] hover:bg-[#b0d826] disabled:opacity-50 text-black font-extrabold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-[#C6EF2E]/20"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <i className="fa-solid fa-circle-notch fa-spin"></i> Processing...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fa-solid fa-crown"></i>
+                          Confirm & Activate {selectedTier} ({formatINR(payableFee)})
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

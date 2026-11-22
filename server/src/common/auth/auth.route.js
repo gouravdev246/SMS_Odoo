@@ -3,6 +3,7 @@ import {
   sendRegisterOtp,
   register,
   verifyRegisterOtp,
+  verifyOtpOnly,
   login,
   verifyLoginOtp,
   createSubAdmin,
@@ -25,6 +26,7 @@ router.post("/send-otp", sendRegisterOtp); // Convenience alias
 // Step 2: User enters OTP with details and registers
 router.post("/register", register);
 router.post("/verify-register", verifyRegisterOtp);
+router.post("/verify-otp", verifyOtpOnly);
 
 // Login endpoints (public - credentials and OTP are submitted here)
 router.post("/login", login);

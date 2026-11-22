@@ -351,3 +351,21 @@
   4. Code Quality & Linter Compliance (`Member360Tab.jsx`): Resolved variable-before-declaration and `useCallback` dependency array ordering for `loadMember360`.
 - Used: React 19, Express.js RBAC middleware (`requireRoles`, `authenticate`), Prisma ORM (v7), PostgreSQL, Tailwind CSS v4.
 - Verification: Server integration test `test-super-admin.js` passed 100% (9/9 passed); verified live sub-admin creation via HTTP POST using a `SUBADMIN` role JWT returning 201 Created; ESLint passed with 0 errors and 0 warnings (`npm --prefix client run lint`); client and root build passed cleanly (`npm run build`).
+
+## 41. Registration OTP Verification Field & Endpoints
+- Implemented: Complete email OTP verification workflow for new member registration:
+  1. Frontend OTP Interface (`AuthPage.jsx`): Added interactive "Send OTP" / "Resend OTP" button beside email input with a 60-second cooldown timer, a dedicated 6-digit verification code input formatted in monospace font with tracking, a "Verify OTP" button with live checking spinner, and real-time status badges (`✓ Email Verified`, dispatched notice). In non-production environments, displays the developer OTP directly in the feedback banner for seamless testing.
+  2. Centralized API Client (`api.js`): Added `api.auth.sendOtp(email)` and `api.auth.verifyOtp(email, otp)` connecting frontend components to backend OTP verification services.
+  3. Backend Verification Endpoints (`auth.controller.js`, `auth.route.js`): Configured `POST /api/auth/send-otp` (and `/send-register-otp`) with 6-digit OTP generation and dev helper response, `POST /api/auth/verify-otp` standalone endpoint for instant code validation, and `POST /api/auth/register` which validates the submitted OTP and safely defaults membership to valid Prisma enum values before generating a JWT and setting the authentication cookie. Direct password login remains fully supported without OTP enforcement.
+- Used: React 19 (`useState`, `useEffect`), Express.js, Prisma ORM (v7), `nodemailer`, bcrypt, JWT.
+- Verification: Created and executed `test-auth-otp-registration.js` covering 5 test steps: OTP generation & dispatch, invalid OTP code rejection (400), valid OTP standalone verification (200), complete registration with OTP (201), and direct credential login of newly created account (200); all 15 backend test suites passed 100% (`npm --prefix server test`); client production build succeeded with 0 errors (`npm --prefix client run build`).
+
+## 42. Nodemailer SMTP Transport Fix & Live Gmail Delivery
+- Implemented: Resolved issue where email OTPs were not dispatched to user emails by Nodemailer:
+  1. Multi-Format Credential Detection (`mailer.js`): Updated transport initialization to recognize both `EMAIL_USER` / `EMAIL_PASS` (configured in `.env`) and `SMTP_USER` / `SMTP_PASS`, automatically stripping whitespace from 16-character Google App Passwords (`.replace(/\s+/g, '')`).
+  2. Dedicated Gmail Service Integration: Configured dedicated `service: "gmail"` transport handling TLS handshakes, Google SMTP routing, and authentication.
+  3. Dynamic Transporter Factory (`getTransporter`): Implemented lazy initialization ensuring environment variables are reliably evaluated even when modules are hoisted or loaded in variable order.
+  4. Authenticated Sender Header: Aligned outgoing `from` address to match the authenticated Gmail account (`"SMS Odoo" <${emailUser}>`), preventing SMTP relay rejections.
+  5. Password Reset OTP Email Dispatch: Uncommented and activated `sendOtpEmail` in `forgotPassword` handler.
+- Used: Node.js, `nodemailer`, Gmail SMTP, `dotenv`.
+- Verification: Executed live SMTP handshake and message dispatch via `test-mailer.js` delivering an OTP email with Message ID from Google's SMTP servers (`smtp.gmail.com`); executed `test-auth-otp-registration.js` verifying OTP dispatch, code validation, and registration (5/5 passed); root `npm run build` completed cleanly.

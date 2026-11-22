@@ -99,6 +99,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ email, otp }),
       }),
+    getMe: () => request('/api/auth/me'),
+    verifyRole: () => request('/api/auth/verify-role'),
     logout: () => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -405,6 +407,16 @@ export const api = {
       }),
     upgrade: (data) =>
       request('/api/membership/upgrade', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    purchase: (data) =>
+      request('/api/membership/purchase', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    subscribe: (data) =>
+      request('/api/membership/purchase', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

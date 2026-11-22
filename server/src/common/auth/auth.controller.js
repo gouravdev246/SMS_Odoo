@@ -139,7 +139,10 @@ export const register = async (req, res) => {
     // OTP is valid - create the user in the database
     const hashedPassword = await bcrypt.hash(password, 10);
     const userPhone = (phone || "").trim() || `user_${Date.now()}`;
-    const userMembership = membership ? membership.toUpperCase() : "JUNIOR";
+    const validMemberships = ["GOLD", "SILVER", "JUNIOR"];
+    const userMembership = membership && validMemberships.includes(membership.toUpperCase())
+      ? membership.toUpperCase()
+      : "JUNIOR";
     const allowedRoles = ["SUPERADMIN", "ADMIN", "SUBADMIN", "STAFF", "MEMBER"];
     const userRole = role && allowedRoles.includes(role.toUpperCase()) ? role.toUpperCase() : "MEMBER";
 
@@ -444,7 +447,7 @@ export const forgotPassword = async (req, res) => {
 
     pendingResetOtps.set(normalizedEmail, { otp, otpExpiry });
 
-    // await sendOtpEmail(normalizedEmail, otp, "Password Reset");
+    await sendOtpEmail(normalizedEmail, otp, "Password Reset");
 
     return res.status(200).json({
       message: "Password reset OTP sent to your email",
